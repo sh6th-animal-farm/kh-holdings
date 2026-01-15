@@ -5,7 +5,7 @@
 
 <mapper namespace="com.kanghwang.khholdings.domain.market.MarketRepository">
 
-    <select id="selectAll" resultType="com.kanghwang.khholdings.domain.market.dto.MarketDTO">
+    <select id="selectAll" resultType="MarketDTO">
         SELECT
             t.token_id,
             t.token_name,
@@ -23,7 +23,36 @@
                    ROW_NUMBER() OVER(PARTITION BY token_id ORDER BY created_at DESC) as rn
             FROM token_quotes
             WHERE unit = 1440
-        ) tq ON t.token_id = tq.token_id AND tq.rn = 1;
+        ) tq ON t.token_id = tq.token_id AND tq.rn = 1
+        ORDER BY tq.trade_volume DESC;
+    </select>
+
+    <select id="selectBySearch" resultType="MarketDTO">
+        SELECT
+            t.token_id,
+            t.token_name,
+            t.ticker_symbol,
+            tl.executed_price AS market_price,
+            tq.trade_volume
+        FROM tokens t
+                 LEFT JOIN (
+            SELECT token_id, executed_price,
+                   ROW_NUMBER() OVER(PARTITION BY token_id ORDER BY created_at DESC) as rn
+            FROM token_ledgers
+        ) tl ON t.token_id = tl.token_id AND tl.rn = 1
+                 LEFT JOIN (
+            SELECT token_id, trade_volume,
+                   ROW_NUMBER() OVER(PARTITION BY token_id ORDER BY created_at DESC) as rn
+            FROM token_quotes
+            WHERE unit = 1440
+        ) tq ON t.token_id = tq.token_id AND tq.rn = 1
+        <where>
+            <if test="content != null and content != ''">
+                (t.token_name ILIKE CONCAT('%', #{content}, '%')
+                OR t.ticker_symbol ILIKE CONCAT('%', #{content}, '%'))
+            </if>
+        </where>
+        ORDER BY tq.trade_volume DESC;
     </select>
 
 </mapper>

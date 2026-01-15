@@ -10,4 +10,6 @@ import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
 public interface MarketRepository {
 
 	public abstract List<MarketDTO> selectAll();
+
+	public abstract List<MarketDTO> selectBySearch(String content);
 }

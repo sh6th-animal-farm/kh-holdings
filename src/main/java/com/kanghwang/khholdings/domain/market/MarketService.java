@@ -16,4 +16,8 @@ public class MarketService {
 	public List<MarketDTO> selectAll() {
 		return marketRepository.selectAll();
 	}
+
+	public List<MarketDTO> selectBySearch(String content) {
+		return marketRepository.selectBySearch(content);
+	}
 }
