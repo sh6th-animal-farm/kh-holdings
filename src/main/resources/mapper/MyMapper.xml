@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kanghwang.khholdings.domain.my.MyRepository">
+
+    <select id="selectWalletById" resultType="WalletDTO">
+        WITH latest_token_quotes AS (
+            SELECT DISTINCT ON (token_id)
+            token_id,
+            closing_price
+        FROM token_quotes
+        WHERE unit = '1m'
+        ORDER BY token_id, created_at DESC
+            )
+        SELECT
+            w.wallet_id AS walletId,
+            w.user_id AS userId,
+            w.bank_name AS bankName,
+            w.account_no AS accountNo,
+            w.cash_balance AS cashBalance,
+            COALESCE(SUM(h.token_balance * h.purchased_value), 0) AS totalPurchasedValue,
+            COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS totalMarketValue,
+            w.cash_balance + COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS totalBalance,
+            COALESCE(SUM(h.token_balance * ltq.closing_price), 0) - COALESCE(SUM(h.token_balance * h.purchased_value), 0) AS profitLoss,
+            CASE
+                WHEN COALESCE(SUM(h.token_balance * h.purchased_value), 0) = 0 THEN 0
+                ELSE
+                    (COALESCE(SUM(h.token_balance * ltq.closing_price), 0) - COALESCE(SUM(h.token_balance * h.purchased_value), 0))
+                        / COALESCE(SUM(h.token_balance * h.purchased_value), 0) * 100
+                END AS profitLossRate
+        FROM wallets w
+                 LEFT JOIN holdings h
+                           ON w.wallet_id = h.wallet_id
+                 LEFT JOIN latest_token_quotes ltq
+                           ON h.token_id = ltq.token_id
+        WHERE w.wallet_id = #{walletId}
+        GROUP BY w.wallet_id, w.user_id, w.bank_name, w.account_no, w.cash_balance;
+    </select>
+
+    <select id="selectTokenByWalletId" parameterType="map" resultType="HoldingDTO">
+        WITH latest_token_quotes AS (
+            SELECT DISTINCT ON (token_id)
+            token_id,
+            closing_price
+        FROM token_quotes
+        WHERE unit = '1m'
+        ORDER BY token_id, created_at DESC
+            )
+        SELECT
+            t.token_name           AS tokenName,
+            t.ticker_symbol        AS tickerSymbol,
+            h.token_balance        AS tokenBalance,
+            h.purchased_value      AS purchasedValue,
+            (h.token_balance * ltq.closing_price) AS marketValue,
+            (h.token_balance * ltq.closing_price) - h.purchased_value AS profitLoss,
+            CASE
+                WHEN h.purchased_value = 0 THEN 0
+                ELSE
+                    ((h.token_balance * ltq.closing_price) - h.purchased_value)
+                        / h.purchased_value * 100
+                END AS profitLossRate
+        FROM holdings h
+                 JOIN tokens t
+                      ON h.token_id = t.token_id
+                 LEFT JOIN latest_token_quotes ltq
+                           ON h.token_id = ltq.token_id
+        WHERE h.wallet_id = #{walletId}
+        ORDER BY t.token_name
+            LIMIT 10
+        OFFSET (#{page} - 1) * 10
+    </select>
+
+</mapper>
