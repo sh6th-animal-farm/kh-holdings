@@ -39,4 +39,37 @@
         GROUP BY w.wallet_id, w.user_id, w.bank_name, w.account_no, w.cash_balance;
     </select>
 
+    <select id="selectTokenByWalletId" parameterType="map" resultType="HoldingDTO">
+        WITH latest_token_quotes AS (
+            SELECT DISTINCT ON (token_id)
+            token_id,
+            closing_price
+        FROM token_quotes
+        WHERE unit = '1m'
+        ORDER BY token_id, created_at DESC
+            )
+        SELECT
+            t.token_name           AS tokenName,
+            t.ticker_symbol        AS tickerSymbol,
+            h.token_balance        AS tokenBalance,
+            h.purchased_value      AS purchasedValue,
+            (h.token_balance * ltq.closing_price) AS marketValue,
+            (h.token_balance * ltq.closing_price) - h.purchased_value AS profitLoss,
+            CASE
+                WHEN h.purchased_value = 0 THEN 0
+                ELSE
+                    ((h.token_balance * ltq.closing_price) - h.purchased_value)
+                        / h.purchased_value * 100
+                END AS profitLossRate
+        FROM holdings h
+                 JOIN tokens t
+                      ON h.token_id = t.token_id
+                 LEFT JOIN latest_token_quotes ltq
+                           ON h.token_id = ltq.token_id
+        WHERE h.wallet_id = #{walletId}
+        ORDER BY t.token_name
+            LIMIT 10
+        OFFSET (#{page} - 1) * 10
+    </select>
+
 </mapper>
