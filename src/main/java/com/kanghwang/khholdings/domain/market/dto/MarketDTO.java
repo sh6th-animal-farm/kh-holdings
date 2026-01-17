@@ -18,5 +18,5 @@ public class MarketDTO {
 	private String tokenName;
 	private String tickerSymbol;
 	private BigDecimal marketPrice;
-	private BigDecimal tradeVolume;
+	private BigDecimal dailyTradeVolume;
 }
