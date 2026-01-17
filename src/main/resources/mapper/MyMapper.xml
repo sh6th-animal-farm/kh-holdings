@@ -8,35 +8,39 @@
     <select id="selectWalletById" resultType="WalletDTO">
         WITH latest_token_quotes AS (
             SELECT DISTINCT ON (token_id)
-            token_id,
-            closing_price
-        FROM token_quotes
-        WHERE unit = '1m'
-        ORDER BY token_id, created_at DESC
-            )
+                token_id,
+                closing_price
+            FROM token_quotes
+            WHERE unit = '1m'::quote_unit_enum
+            ORDER BY token_id, created_at DESC
+        ),
+        wallet_stats AS (
+            SELECT
+                w.wallet_id,
+                w.bank_name,
+                w.account_no,
+                w.cash_balance,
+                COALESCE(SUM(h.purchased_value), 0) AS total_purchased_value,
+                COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS total_market_value
+            FROM wallets w
+                LEFT JOIN holdings h ON w.wallet_id = h.wallet_id
+                LEFT JOIN latest_token_quotes ltq ON h.token_id = ltq.token_id
+            WHERE w.wallet_id = #{walletId}
+            GROUP BY w.wallet_id, w.bank_name, w.account_no, w.cash_balance
+        )
         SELECT
-            w.wallet_id AS walletId,
-            w.user_id AS userId,
-            w.bank_name AS bankName,
-            w.account_no AS accountNo,
-            w.cash_balance AS cashBalance,
-            COALESCE(SUM(h.token_balance * h.purchased_value), 0) AS totalPurchasedValue,
-            COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS totalMarketValue,
-            w.cash_balance + COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS totalBalance,
-            COALESCE(SUM(h.token_balance * ltq.closing_price), 0) - COALESCE(SUM(h.token_balance * h.purchased_value), 0) AS profitLoss,
+            bank_name AS bankName,
+            account_no AS accountNo,
+            cash_balance AS cashBalance,
+            total_purchased_value AS totalPurchasedValue,
+            total_market_value AS totalMarketValue,
+            (cash_balance + total_market_value) AS totalBalance,
+            (total_market_value - total_purchased_value) AS profitLoss,
             CASE
-                WHEN COALESCE(SUM(h.token_balance * h.purchased_value), 0) = 0 THEN 0
-                ELSE
-                    (COALESCE(SUM(h.token_balance * ltq.closing_price), 0) - COALESCE(SUM(h.token_balance * h.purchased_value), 0))
-                        / COALESCE(SUM(h.token_balance * h.purchased_value), 0) * 100
+                WHEN total_purchased_value = 0 THEN 0
+                ELSE (total_market_value - total_purchased_value) / total_purchased_value * 100
                 END AS profitLossRate
-        FROM wallets w
-                 LEFT JOIN holdings h
-                           ON w.wallet_id = h.wallet_id
-                 LEFT JOIN latest_token_quotes ltq
-                           ON h.token_id = ltq.token_id
-        WHERE w.wallet_id = #{walletId}
-        GROUP BY w.wallet_id, w.user_id, w.bank_name, w.account_no, w.cash_balance;
+        FROM wallet_stats
     </select>
 
     <select id="selectTokenByWalletId" parameterType="map" resultType="HoldingDTO">
@@ -45,7 +49,7 @@
             token_id,
             closing_price
         FROM token_quotes
-        WHERE unit = '1m'
+        WHERE unit = '1m'::quote_unit_enum
         ORDER BY token_id, created_at DESC
             )
         SELECT
