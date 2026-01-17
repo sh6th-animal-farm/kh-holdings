@@ -11,7 +11,7 @@
         where
             token_id  = #{tokenId}
         and
-            wallet_id = ${walletId}
+            wallet_id = #{walletId}
     </select>
 
     <select id="selectAvailableBalance" parameterType="Long" resultType="bigdecimal">
@@ -20,7 +20,7 @@
         from
             wallets
         where
-            user_id  = #{userId}
+            wallet_id  = #{walletId}
     </select>
 
 </mapper>
