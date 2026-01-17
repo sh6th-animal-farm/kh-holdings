@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kanghwang.khholdings.domain.order.OrderRepository">
+
+    <select id="selectHoldingTokenBalance" parameterType="Long" resultType="bigdecimal">
+        select
+            token_balance
+        from
+            holdings
+        where
+            token_id  = #{tokenId}
+        and
+            wallet_id = #{walletId}
+    </select>
+
+    <select id="selectAvailableBalance" parameterType="Long" resultType="bigdecimal">
+        select
+            available_balance
+        from
+            wallets
+        where
+            wallet_id  = #{walletId}
+    </select>
+
+</mapper>
