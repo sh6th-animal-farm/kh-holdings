@@ -1,10 +1,11 @@
 package com.kanghwang.khholdings.domain.order;
 
-import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import java.math.BigDecimal;
+
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.math.BigDecimal;
+import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 
 @Mapper
 public interface OrderRepository {
@@ -13,7 +14,7 @@ public interface OrderRepository {
 
 	BigDecimal selectAvailableBalance(Long walletId);
 
-	void callPlaceOrderProcedure(long orderId, OrderRequestDTO dto);
+	void callPlaceOrderProcedure(long orderId, OrderRequestDTO orderDto);
 
 	void p_process_transaction_hists(
 			@Param("p_trade_id") long tradeId,
