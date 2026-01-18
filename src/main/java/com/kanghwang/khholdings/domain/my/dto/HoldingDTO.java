@@ -1,12 +1,8 @@
 package com.kanghwang.khholdings.domain.my.dto;
 
-import java.math.BigDecimal;
+import lombok.*;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -14,11 +10,11 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class HoldingDTO {
-	private String tokenName;
-	private String tickerSymbol;
-	private BigDecimal tokenBalance;
-	private BigDecimal purchasedValue;
-	private BigDecimal marketValue;
-	private BigDecimal profitLoss;
-	private BigDecimal profitLossRate;
+	private String tokenName;				// 토큰명
+	private String tickerSymbol;			// 종목 코드
+	private BigDecimal tokenBalance;		// 보유 수량
+	private BigDecimal purchasedValue;		// 매입 금액
+	private BigDecimal marketValue;			// 평가 금액
+	private BigDecimal profitLoss;			// 평가 손익
+	private BigDecimal profitLossRate;		// 수익률
 }

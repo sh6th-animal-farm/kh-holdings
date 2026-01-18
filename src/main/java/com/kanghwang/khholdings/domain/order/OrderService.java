@@ -1,37 +1,45 @@
 package com.kanghwang.khholdings.domain.order;
 
-import java.math.BigDecimal;
-
-import org.springframework.beans.factory.annotation.Autowired;
+import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import com.kanghwang.khholdings.global.util.IdFormatter;
+import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import java.math.BigDecimal;
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
 
-	@Autowired
-	OrderDBService orderDBService;
+	private final SnowflakeIdGenerator idGenerator;
+	private final OrderDBService orderDBService;
+	private final OrderRedisService orderRedisService;
 
-	@Autowired
-	OrderRedisService orderRedisService;
-
+	// 특정 토큰 보유 수량 조회
 	public BigDecimal selectHoldingTokenBalance(Long walletId, Long tokenId){
 		return orderDBService.selectHoldingTokenBalance(walletId, tokenId);
 	}
 
+	// 주문 가능 금액 조회
 	public BigDecimal selectAvailableBalance(Long walletId){
 		return orderDBService.selectAvailableBalance(walletId);
 	}
 
-	@Transactional // DB 처리가 실패하면 전체를 취소함
-	public void orderByCondition(OrderRequestDTO orDTO) {
-		// 1. DB: 주문 저장 및 자산 동결 (가장 중요!)
-		orderDBService.orderByCondition(orDTO);
+	// 매수/매도 주문
+	@Transactional
+	public void placeOrder(OrderRequestDTO dto) {
 
-		// 2. Redis: 실시간 매칭 엔진 가동
-		// DB 작업이 무사히 끝난 직후에만 실행됩니다.
-		// orderRedisService.processMatching(orDTO);
+		// 1. Snowflake ID 생성
+		long rawId = idGenerator.nextId();
+
+		String preId = IdFormatter.formatOrderId(rawId);
+
+		// 2. DB에 저장하라고 넘김
+		orderDBService.placeOrder(rawId, dto);
+
+		// 3. Redis에 동일한 요청
+		orderRedisService.processOrder(preId, dto);
 	}
 }
