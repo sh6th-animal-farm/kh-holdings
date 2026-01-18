@@ -1,11 +1,12 @@
 package com.kanghwang.khholdings.domain.order;
 
-import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import java.math.BigDecimal;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 
 @Service
 public class OrderDBService {
@@ -22,7 +23,7 @@ public class OrderDBService {
 	}
 
 	@Transactional
-	public void placeOrder(long orderId, OrderRequestDTO dto) {
-		orderRepository.callPlaceOrderProcedure(orderId, dto);
+	public void placeOrder(long orderId, OrderRequestDTO orderDto) {
+		orderRepository.callPlaceOrderProcedure(orderId, orderDto);
 	}
 }

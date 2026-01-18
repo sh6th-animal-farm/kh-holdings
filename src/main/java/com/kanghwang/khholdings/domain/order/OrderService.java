@@ -1,13 +1,15 @@
 package com.kanghwang.khholdings.domain.order;
 
-import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
-import com.kanghwang.khholdings.global.util.IdFormatter;
-import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
-import lombok.RequiredArgsConstructor;
+import java.math.BigDecimal;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import com.kanghwang.khholdings.global.util.IdFormatter;
+import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -29,7 +31,7 @@ public class OrderService {
 
 	// 매수/매도 주문
 	@Transactional
-	public void placeOrder(OrderRequestDTO dto) {
+	public void placeOrder(OrderRequestDTO orderDto) {
 
 		// 1. Snowflake ID 생성
 		long rawId = idGenerator.nextId();
@@ -37,9 +39,9 @@ public class OrderService {
 		String preId = IdFormatter.formatOrderId(rawId);
 
 		// 2. DB에 저장하라고 넘김
-		orderDBService.placeOrder(rawId, dto);
+		orderDBService.placeOrder(rawId, orderDto);
 
 		// 3. Redis에 동일한 요청
-		orderRedisService.processOrder(preId, dto);
+		orderRedisService.processOrder(preId, orderDto);
 	}
 }
