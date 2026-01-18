@@ -1,12 +1,8 @@
 package com.kanghwang.khholdings.domain.my.dto;
 
-import java.math.BigDecimal;
+import lombok.*;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -14,14 +10,16 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WalletDTO {
-	private Long walletId;
-	private Long userId;
-	private String bankName;
-	private String accountNo;
-	private BigDecimal cashBalance;
-	private BigDecimal totalPurchasedValue;
-	private BigDecimal totalMarketValue;
-	private BigDecimal totalBalance;
-	private BigDecimal profitLoss;
-	private BigDecimal profitLossRate;
+	private Long walletId;						// 지갑 번호
+	private Long userId;						// 사용자 번호
+	private String accountNo;					// 계좌번호
+	private String bankName;					// 은행명
+	private BigDecimal cashBalance;				// 예수금
+	private BigDecimal frozen_amount;			// 동결 금액
+
+	private BigDecimal totalPurchasedValue;		// 매입 금액
+	private BigDecimal totalMarketValue;		// 평가 금액
+	private BigDecimal totalBalance;			// 총자산
+	private BigDecimal profitLoss;				// 평가손익
+	private BigDecimal profitLossRate;			// 수익률
 }

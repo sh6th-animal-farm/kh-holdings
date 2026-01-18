@@ -1,12 +1,11 @@
 package com.kanghwang.khholdings.domain.order.dto;
 
-import java.math.BigDecimal;
-
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.domain.order.type.OrderType;
-
 import lombok.Getter;
 import lombok.Setter;
+
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -18,6 +17,7 @@ public class OrderRequestDTO {
 	private OrderType orderType;       // order_type, 주문 유형(시장가, 지정가)
 	private BigDecimal orderPrice;  // order_price, 주문 단가
 	private BigDecimal orderVolume; // order_volume, 주문 수량
+	private BigDecimal totalPrice;
 
 	// 프로시저 실행에 필요한 추가 파라미터
 	private BigDecimal totalCash;   // 시장가 매수용 총 금액
