@@ -23,7 +23,7 @@ public class OrderDBService {
 	}
 
 	@Transactional
-	public void placeOrder(long orderId, OrderRequestDTO orderDto) {
-		orderRepository.callPlaceOrderProcedure(orderId, orderDto);
+	public void placeOrder(OrderRequestDTO orderDto) {
+		orderRepository.callPlaceOrderProcedure(orderDto);
 	}
 }
