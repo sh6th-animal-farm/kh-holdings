@@ -5,46 +5,59 @@ import org.springframework.stereotype.Component;
 @Component
 public class SnowflakeIdGenerator {
 
-    // 기준 시간: 2026-01-01 00:00:00 KST
-    private final long epoch = 1767193200000L;
-    private final long sequenceBits = 12L;
+    // 1. 기준 시간 (바꾸지 마세요. 유지해야 과거 ID와 정렬이 맞습니다)
+    private static final long epoch = 1767193200000L; // 2026-01-01
 
-    private long sequence = 0L;
-    private long lastTimeStamp = -1L;
+    // 2. 비트 할당 (표준 규격)
+    private static final long sequenceBits = 12L;   // 1ms당 4096개 생성 가능
+    private static final long workerIdBits = 5L;     // 서버 식별 (서버 1대라도 자리 비워둠)
 
-    public synchronized long nextId() {
+    // 3. 밀기 연산 (이 숫자들이 시간 데이터를 결정합니다)
+    private static final long workerIdShift = sequenceBits; // 12칸
+    private static final long timestampLeftShift = sequenceBits + workerIdBits; // 17칸
+    private static final long sequenceMask = -1L ^ (-1L << sequenceBits); // 4095
 
+    private static long lastTimestamp = -1L;
+    private static long sequence = 0L;
+    private static final long workerId = 0L; // 현재 서버 1대이므로 0 고정
+
+    public static synchronized long nextId() {
         long timestamp = timeGen();
 
-        if (timestamp < lastTimeStamp) {
-            throw new RuntimeException("시간에 문제가 생겼습니다.");
+        if (timestamp < lastTimestamp) {
+            throw new RuntimeException("Clock moved backwards.");
         }
 
-        if (lastTimeStamp == timestamp) {
-            sequence  = (sequence + 1) & ((1L << sequenceBits) - 1);
+        if (lastTimestamp == timestamp) {
+            // 같은 밀리초에 호출되면 sequence 증가
+            sequence = (sequence + 1) & sequenceMask;
             if (sequence == 0) {
-                timestamp = tilNextMillis(lastTimeStamp);
+                // 4096개를 다 쓰면 다음 밀리초까지 대기 (중복 방지 핵심)
+                timestamp = tilNextMillis(lastTimestamp);
             }
         } else {
+            // 시간이 흐르면 sequence는 다시 0부터
             sequence = 0L;
         }
 
-        lastTimeStamp = timestamp;
+        lastTimestamp = timestamp;
 
-        // 시간을 왼쪽으로 12칸 밀고, 그 자리에 순번을 넣습니다.
-        return ((timestamp - epoch) << sequenceBits) | sequence;
-
+        // [중요] 비트 조립
+        // 시간차를 17칸 왼쪽으로 밀어서 가장 높은 자리에 배치 (시간 순 정렬 보장)
+        return ((timestamp - epoch) << timestampLeftShift) |
+            (workerId << workerIdShift) |
+            sequence;
     }
 
-    protected long tilNextMillis(long lastTimestamp) {
-        long timestamp = timeGen();
+    protected static Long tilNextMillis(Long lastTimestamp) {
+        Long timestamp = timeGen();
         while (timestamp <= lastTimestamp) {
             timestamp = timeGen();
         }
         return timestamp;
     }
 
-    protected long timeGen() {
+    protected static Long timeGen() {
         return System.currentTimeMillis();
     }
 }

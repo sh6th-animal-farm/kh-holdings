@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
-import com.kanghwang.khholdings.global.util.IdFormatter;
+import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
 import lombok.RequiredArgsConstructor;
@@ -18,6 +18,7 @@ public class OrderService {
 	private final SnowflakeIdGenerator idGenerator;
 	private final OrderDBService orderDBService;
 	private final OrderRedisService orderRedisService;
+	private final SnowflakeIdGenerator snowflakeIdGenerator;
 
 	// 특정 토큰 보유 수량 조회
 	public BigDecimal selectHoldingTokenBalance(Long walletId, Long tokenId){
@@ -34,14 +35,18 @@ public class OrderService {
 	public void placeOrder(OrderRequestDTO orderDto) {
 
 		// 1. Snowflake ID 생성
-		long rawId = idGenerator.nextId();
+		Long orderId = snowflakeIdGenerator.nextId();
 
-		String preId = IdFormatter.formatOrderId(rawId);
+		orderDto.setOrderId(orderId);
+		if (orderDto.getOrderSide() == OrderSide.BUY) {
+			orderDto.setRemainingCash(orderDto.getTotalPrice());
+		}
+		orderDto.setRemainingToken(orderDto.getOrderVolume());
 
 		// 2. DB에 저장하라고 넘김
-		orderDBService.placeOrder(rawId, orderDto);
+		orderDBService.placeOrder(orderDto);
 
 		// 3. Redis에 동일한 요청
-		orderRedisService.processOrder(preId, orderDto);
+		orderRedisService.processOrder(orderDto);
 	}
 }

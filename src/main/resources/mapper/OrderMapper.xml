@@ -23,27 +23,31 @@
             wallet_id  = #{walletId}
     </select>
 
-    <update id="callPlaceOrderProcedure" statementType="CALLABLE">
+    <update id="callPlaceOrderProcedure" parameterType="OrderRequestDTO" statementType="CALLABLE">
         CALL p_create_order(
             #{orderId},
-            #{dto.walletId},
-            #{dto.tokenId},
-            #{dto.orderSide}::order_side_enum,
-            #{dto.orderType}::order_type_enum,
-            #{dto.orderPrice},
-            #{dto.orderVolume},
-            #{dto.totalPrice}
+            #{walletId},
+            #{tokenId},
+            #{orderSide}::order_side_enum,
+            #{orderType}::order_type_enum,
+            #{orderPrice},
+            #{orderVolume},
+            #{totalPrice}
         )
     </update>
 
-    <update id="p_process_transaction_hists" statementType="CALLABLE">
+    <update id="p_process_transaction_hists" parameterType="TransactionRequestDTO" statementType="CALLABLE">
         CALL p_process_transaction_hists(
-                #{p_trade_id, mode=IN, jdbcType=BIGINT},
-                #{p_buy_order_id, mode=IN, jdbcType=BIGINT},
-                #{p_sell_order_id, mode=IN, jdbcType=BIGINT},
-                #{p_exec_price, mode=IN, jdbcType=NUMERIC},
-                #{p_exec_volume, mode=IN, jdbcType=NUMERIC},
-                #{p_fee_rate, mode=IN, jdbcType=NUMERIC}
+                #{txId1},
+                #{txId2},
+                #{txId3},
+                #{txId4},
+                #{tradeId},
+                #{buyOrderId},
+                #{sellOrderId},
+                #{targetPrice},
+                #{executedVolume},
+                #{feeRate}
                )
     </update>
 </mapper>
