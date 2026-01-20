@@ -50,4 +50,13 @@
                 #{feeRate}
                )
     </update>
+
+    <update id="p_cancel_order_and_refund" statementType="CALLABLE">
+        CALL p_cancel_order_and_refund(
+            #{txId},
+            #{orderId},
+            #{remainingCash},
+            #{remainingToken}
+        )
+    </update>
 </mapper>

@@ -1,4 +1,4 @@
-package com.kanghwang.khholdings.domain.order;
+package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 
@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.kanghwang.khholdings.domain.order.OrderRepository;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 
 @Service
