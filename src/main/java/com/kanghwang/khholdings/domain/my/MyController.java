@@ -1,18 +1,13 @@
 package com.kanghwang.khholdings.domain.my;
 
-import java.util.List;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
+import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/my")
@@ -34,9 +29,9 @@ public class MyController {
 	}
 
 	//나의 거래 내역 조회(청약, 배당, 거래)
-	@GetMapping("/transaction/{walletId}")
-	public List<TransactionRequestDTO> selectTxHistByWalletId(@PathVariable Long walletId, @RequestParam Integer page){
-		return myService.selectTxHistByWalletId(walletId, page);
+	@GetMapping("/transaction")
+	public List<TransactionRequestDTO> selectTxHistByWalletId(@ModelAttribute TxHistsSearchDTO searchDTO){
+		return myService.selectTxHistByWalletId(searchDTO);
 	}
 
 	//계좌 연동

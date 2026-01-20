@@ -76,7 +76,56 @@
         OFFSET (#{page} - 1) * 10
     </select>
 
-    <select id="selectTxHistByWalletId" parameterType="map" resultType="HoldingDTO">
+    <select id="selectTxHistByWalletId" resultType="TransactionHistDTO">
+        SELECT
+        to_char(MIN(th.created_at), 'yyyy/mm/dd hh24:mi:ss'::timestamp) AS created_at,
+            CASE
+                WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'BUY' THEN 'BUY'
+                WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'SELL' THEN 'SELL'
+                ELSE th.transaction_type::text
+                END AS transaction_type,
+            COALESCE(MAX(t.token_name), '-') AS token_name,
+            COALESCE(MAX(t.ticker_symbol), '-') AS ticker_symbol,
+            CASE
+                WHEN th.transaction_type = 'TRADE' THEN
+                    ABS(SUM(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END)) /
+                    NULLIF(SUM(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END), 0)
+                ELSE NULL
+                END AS unit_price,
+            SUM(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END) AS transaction_volume,
+            MAX(CASE WHEN th.asset_type = 'TOKEN' THEN th.balance_after END) AS token_balance_after,
+            SUM(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END) AS transaction_amount,
+            MAX(CASE WHEN th.asset_type = 'CASH' THEN th.balance_after ELSE NULL END) AS balance_after,
+            COALESCE(th.trade_id, th.transaction_id) AS group_id
+        FROM transaction_hists th
+                 LEFT JOIN orders o ON th.order_id = o.order_id
+                 LEFT JOIN tokens t ON o.token_id = t.token_id
+        WHERE th.wallet_id = #{walletId}
+        <if test="category != null and category != ''">
+            AND th.transaction_type = #{category})
+        </if>
+        <if test="period != null and period != ''">
+            <choose>
+                <when test="period == '1W'">
+                    AND created_at >= NOW() - INTERVAL '7 days'
+                </when>
+                <when test="period == '1M'">
+                    AND created_at >= NOW() - INTERVAL '1 month'
+                </when>
+                <when test="period == '3M'">
+                    AND created_at >= NOW() - INTERVAL '3 month'
+                </when>
+                <when test="period == '6M'">
+                    AND created_at >= NOW() - INTERVAL '6 month'
+                </when>
+            </choose>
+        </if>
+        GROUP BY
+            COALESCE(th.trade_id, th.transaction_id),
+            th.transaction_type
+        ORDER BY created_at DESC
+            LIMIT 10
+        OFFSET (#{page} - 1) * 10
     </select>
 
     <select id="selectAccount">
