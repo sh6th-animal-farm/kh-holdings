@@ -6,11 +6,16 @@ import org.apache.ibatis.annotations.Mapper;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
+import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 
 @Mapper
 public interface MyRepository {
 
-	public abstract List<WalletDTO> selectWalletById(Long walletId);
+	List<WalletDTO> selectWalletById(Long walletId);
 
-	public abstract List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page);
+	List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page);
+
+	List<TransactionRequestDTO> selectTxHistByWalletId(Long walletId, Integer page);
+
+	Long selectAccount(Long userId);
 }

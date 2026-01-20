@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
+import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 
 @Service
 public class MyService {
@@ -20,5 +21,13 @@ public class MyService {
 
 	public List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page){
 		return myRepository.selectTokenByWalletId(walletId, page);
+	}
+
+	public List<TransactionRequestDTO> selectTxHistByWalletId(Long walletId, Integer page){
+		return myRepository.selectTxHistByWalletId(walletId, page);
+	}
+
+	public Long selectAccount(Long userId){
+		return myRepository.selectAccount(userId);
 	}
 }
