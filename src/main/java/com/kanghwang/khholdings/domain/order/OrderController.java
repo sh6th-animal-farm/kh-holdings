@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import com.kanghwang.khholdings.domain.order.service.OrderService;
 
 @RestController
 @RequestMapping("/api/order")

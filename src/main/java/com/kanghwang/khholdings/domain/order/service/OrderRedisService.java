@@ -1,4 +1,4 @@
-package com.kanghwang.khholdings.domain.order;
+package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -11,6 +11,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import com.kanghwang.khholdings.domain.order.OrderRepository;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
@@ -179,20 +180,20 @@ public class OrderRedisService {
 			// [Step 4] 자산 정산 (미체결 수량 및 금액 갱신)
 			// 1) 나
 			if (myOrderDTO.getOrderSide() == OrderSide.SELL
-					|| (myOrderDTO.getOrderSide() == OrderSide.BUY && myOrderDTO.getOrderType() == OrderType.MARKET)) {
+					|| (myOrderDTO.getOrderSide() == OrderSide.BUY && myOrderDTO.getOrderType() == OrderType.LIMIT)) {
 				myOrderDTO.setRemainingToken(myOrderDTO.getRemainingToken().subtract(executedVolume));
 			}
 			if (myOrderDTO.getOrderSide() == OrderSide.BUY) {
 				// 실제 체결 금액이 아닌 주문 금액으로 미체결 금액 업데이트 (주문 금액 * 체결 수량)
-				myOrderDTO.setRemainingCash(myOrderDTO.getRemainingCash().subtract(myOrderDTO.getOrderPrice().multiply(executedVolume)));
+				myOrderDTO.setRemainingCash(myOrderDTO.getRemainingCash().subtract(targetPrice.multiply(executedVolume)));
 			}
 			// 2) 상대방
 			if (targetOrderDTO.getOrderSide() == OrderSide.SELL
-					|| (targetOrderDTO.getOrderSide() == OrderSide.BUY && targetOrderDTO.getOrderType() == OrderType.MARKET)) {
+					|| (targetOrderDTO.getOrderSide() == OrderSide.BUY && targetOrderDTO.getOrderType() == OrderType.LIMIT)) {
 				targetOrderDTO.setRemainingToken(targetOrderDTO.getRemainingToken().subtract(executedVolume));
 			}
 			if (targetOrderDTO.getOrderSide() == OrderSide.BUY) {
-				targetOrderDTO.setRemainingCash(targetOrderDTO.getRemainingCash().subtract(targetOrderDTO.getOrderPrice().multiply(executedVolume)));
+				targetOrderDTO.setRemainingCash(targetOrderDTO.getRemainingCash().subtract(targetPrice.multiply(executedVolume)));
 			}
 
 			// [Step 5] 호가창 업데이트
@@ -202,25 +203,57 @@ public class OrderRedisService {
 			if (targetOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0) {
 				// 1) 0보다 작거나 같으면, 해당 주문을 호가창에서 제거 (매칭 X)
 				removeOrder(myOrderDTO.getTokenId(), counterSide, targetOrderId);
+				log.info("주문 전량 체결 완료: OrderId {}", targetOrderId);
 			} else {
 				// 2) 0보다 크면, 주문 상세 업데이트
 				infoMap.put(targetOrderId, targetOrderDTO);
 			}
 		}
 
-		// [Step 5] 매칭 종료 후 주문 최종 처리
-		if (myOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0) {
-			// 완전 체결 시, 내 주문을 호가창에서 제거
-			removeOrder(myOrderDTO.getTokenId(), mySide, myOrderId);
+		// [Step 6] 매칭 종료 후 주문 최종 처리
+		boolean isCompleted = false; // 주문이 완전히 체결되었는지 여부
+
+		if (myOrderDTO.getOrderType() == OrderType.MARKET && myOrderDTO.getOrderSide() == OrderSide.BUY) {
+			// 1) 시장가 매수 : 미체결 금액이 0 이하인 경우 체결 완료
+			if (myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) <= 0) {
+				isCompleted = true;
+			}
 		} else {
+			// 2) 그 외 (지정가 매수/매도, 시장가 매도) : 미체결 수량이 0 이하인 경우 완전 체결
+			if (myOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0) {
+				isCompleted = true;
+			}
+		}
+
+		if (isCompleted) {
+			// 지정가 매수인데 주문 요청 금액보다 싸게 사서 돈이 남은 경우 추가 환불
+			if (myOrderDTO.getOrderType() == OrderType.LIMIT
+					&& myOrderDTO.getOrderSide() == OrderSide.BUY
+					&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
+
+				orderRepository.p_cancel_order_and_refund(
+					snowflakeIdGenerator.nextId(),
+					myOrderId,
+					myOrderDTO.getRemainingCash(),
+					BigDecimal.ZERO
+				);
+				log.info("지정가 매수 차액 환불: 주문ID {}, 환불금액 {}", myOrderId, myOrderDTO.getRemainingCash());
+			}
+
+			// 체결 완료 시, 호가창과 상세 정보에서 제거
+			removeOrder(myOrderDTO.getTokenId(), mySide, myOrderId);
+			log.info("주문 전량 체결 완료: OrderId {}", myOrderId);
+		} else {
+			// 부분 체결 시,
 			if (myOrderDTO.getOrderType() == OrderType.MARKET) {
-				// 미완전 체결 시,
 				// 1) 시장가 주문은 미체결 수량 즉시 환불
-				// orderRepository.p_cancel_order_and_refund(myOrderDto);
-				removeOrder(myOrderDTO.getTokenId(), mySide, myOrderId);
+				Long txId = snowflakeIdGenerator.nextId();
+				orderRepository.p_cancel_order_and_refund(txId, myOrderId, myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken()); // DB 환불 프로시저 호출
+				removeOrder(myOrderDTO.getTokenId(), mySide, myOrderId); // 호가창과 상세 정보에서 내 주문 제거
+				log.info("시장가 주문 매칭 종료로 잔량 환불: OrderId {}", myOrderId);
 			} else {
-				// 2) 지정가 주문은 주문 상세 업데이트
-				log.info("지정가 주문 잔량 호가창에 등록: OrderId {}, RemainingVolume {}", myOrderId, myOrderDTO.getRemainingToken());
+				// 2) 지정가 주문은 이미 [Step 5]에서 업데이트
+				log.info("지정가 주문 잔량 대기: OrderId {}, RemainingToken {}", myOrderId, myOrderDTO.getRemainingToken());
 			}
 		}
 	}
@@ -234,6 +267,5 @@ public class OrderRedisService {
 		redissonClient.getScoredSortedSet(bookKey).remove(orderId); // 호가창에서 삭제
 		redissonClient.getMap(infoKey).remove(orderId); // 주문 상세에서 삭제
 
-		log.info("체결 완료 또는 주문 취소로 호가창에서 제거: {}", orderId);
 	}
 }

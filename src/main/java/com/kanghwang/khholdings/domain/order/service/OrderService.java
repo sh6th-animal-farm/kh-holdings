@@ -1,4 +1,4 @@
-package com.kanghwang.khholdings.domain.order;
+package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 

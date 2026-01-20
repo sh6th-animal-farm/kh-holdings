@@ -18,4 +18,6 @@ public interface OrderRepository {
 
 	void p_process_transaction_hists(TransactionRequestDTO transactionDTO);
 
+	void p_cancel_order_and_refund(Long txId, Long orderId, BigDecimal remainingCash, BigDecimal remainingToken);
+
 }
