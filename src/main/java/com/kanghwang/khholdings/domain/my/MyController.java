@@ -40,7 +40,7 @@ public class MyController {
 	}
 
 	//계좌 연동
-	@PostMapping("/account/{userId}")
+	@GetMapping("/account/{userId}")
 	public Long selectAccount(@PathVariable Long userId){
 		return myService.selectAccount(userId);
 	}
