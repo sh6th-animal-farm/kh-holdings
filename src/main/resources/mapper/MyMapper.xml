@@ -76,4 +76,16 @@
         OFFSET (#{page} - 1) * 10
     </select>
 
+    <select id="selectTxHistByWalletId" parameterType="map" resultType="HoldingDTO">
+    </select>
+
+    <select id="selectAccount">
+        SELECT
+            wallet_id
+        FROM
+            wallets
+        WHERE user_id = #{userId}
+        AND bank_name = 'kh 증권'
+    </select>
+
 </mapper>
