@@ -5,8 +5,8 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,7 +18,8 @@ public class ProjectController {
 	@Autowired
 	private ProjectService projectService;
 
-	@GetMapping("/application/{tokenId}")
+	// 청약 신청
+	@PostMapping("/application/{tokenId}")
 	public ResponseEntity<?> applySubscription(@PathVariable Long tokenId,
 		@RequestParam Long subscriptionId,
 		@RequestParam Long walletId,
@@ -36,5 +37,19 @@ public class ProjectController {
 				"message", e.getMessage()
 			));
 		}
+	}
+
+	// 청약 취소
+	@PostMapping("/cancel/{transactionId}")
+	public ResponseEntity<?> cancelSubscription(@PathVariable Long transactionId) {
+
+		boolean isCancelled = projectService.cancelSubscription(transactionId);
+
+		if (isCancelled) {
+			return ResponseEntity.ok("청약 신청이 취소되었습니다.");
+		} else {
+			return ResponseEntity.badRequest().body("청약 취소에 실패했습니다.");
+		}
+
 	}
 }

@@ -8,4 +8,6 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ProjectRepository {
 
 	Long applySubscription(Long transactionId, Long tokenId, Long subscriptionId, Long walletId, BigDecimal amount, String hashValue);
+
+	boolean cancelSubscription(Long transactionId, Long newTransactionId, String hashValue);
 }

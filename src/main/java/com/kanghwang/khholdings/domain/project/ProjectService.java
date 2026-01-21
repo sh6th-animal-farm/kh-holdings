@@ -33,4 +33,16 @@ public class ProjectService {
 
 		return txHistId;
 	}
+
+	@Transactional
+	public boolean cancelSubscription(Long transactionId) {
+
+		// 1. Snowflake ID 생성
+		Long newTransactionId = SnowflakeIdGenerator.nextId();
+
+		// 2. 해시값 생성
+		String hashValue = DigestUtils.sha256Hex(transactionId.toString());
+
+		return projectRepository.cancelSubscription(transactionId, newTransactionId, hashValue);
+	}
 }

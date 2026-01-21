@@ -28,4 +28,35 @@
             RETURNING transaction_id
     </select>
 
+    <insert id="cancelSubscription">
+        WITH target_tx AS (
+            -- 1. 기존 청약 신청 내역 조회
+            SELECT wallet_id, amount, trade_id
+            FROM transaction_hists
+            WHERE transaction_id = #{transactionId}
+              AND transaction_type = 'SUBSCRIPTION' -- 해당 내역이 청약 건인지 추가 검증
+        ),
+        update_wallet AS (
+            -- 2. 지갑 잔액 환불
+            UPDATE wallets w
+            SET cash_balance = w.cash_balance + t.amount
+                FROM target_tx t
+            WHERE w.wallet_id = t.wallet_id
+                RETURNING w.wallet_id, w.cash_balance, t.amount, t.trade_id
+        )
+        -- 3. 취소 내역 삽입
+        INSERT INTO transaction_hists (
+            transaction_id, trade_id, order_id, wallet_id,
+            transaction_type, asset_type, direction,
+            amount, balance_after, remaining_price,
+            remaining_volume, created_at, fee, hash_value
+        )
+        SELECT
+            #{newTransactionId}, uw.trade_id, NULL, uw.wallet_id,
+            'FAIL', 'CASH', 'IN',
+            uw.amount, uw.cash_balance, 0,
+            0, NOW(), 0, #{hashValue}
+        FROM update_wallet uw
+    </insert>
+
 </mapper>
