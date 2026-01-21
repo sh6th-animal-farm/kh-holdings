@@ -7,11 +7,14 @@
 
     <select id="selectTokenIdByWalletId" resultType="HoldingRequestDTO">
         SELECT
-            token_id
-        FROM
-            holdings
-        where
-            wallet_id = #{walletId}
+            h.token_id,
+            SUM(CASE WHEN w.wallet_id = #{walletId} THEN h.token_balance ELSE 0 END) as my_balance,
+            SUM(CASE WHEN u.user_class = 'ENTERPRISE' THEN h.token_balance ELSE 0 END) as enterprise_total
+        FROM kh_holdings.holdings h
+                 JOIN wallets w ON h.wallet_id = w.wallet_id
+                 JOIN users u ON w.user_id = u.user_id
+        GROUP BY h.token_id
+        HAVING SUM(CASE WHEN w.wallet_id = #{walletId} THEN h.token_balance ELSE 0 END) > 0
     </select>
 
 </mapper>
