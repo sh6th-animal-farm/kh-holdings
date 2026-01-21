@@ -1,15 +1,16 @@
 package com.kanghwang.khholdings.domain.order.dto;
 
-import java.math.BigDecimal;
-
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.domain.order.type.OrderType;
-
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
+@Builder
 public class OrderRequestDTO {
 	private Long orderId;             // order_id, 주문 고유 번호
 	private Long walletId;            // wallet_id, 지갑 번호
