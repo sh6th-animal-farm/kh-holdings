@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kanghwang.khholdings.domain.project.ProjectRepository">
+
+    <select id="applySubscription" resultType="long">
+        WITH updated_wallet AS (
+            UPDATE wallets
+            SET cash_balance = cash_balance - #{amount}
+            WHERE wallet_id = #{walletId}
+              AND (cash_balance - frozen_amount) >= #{amount}
+                RETURNING cash_balance
+        )
+        INSERT INTO transaction_hists (
+            transaction_id, trade_id, order_id, wallet_id,
+            transaction_type, asset_type, direction, amount,
+            balance_after, remaining_price, remaining_volume,
+            created_at, fee, hash_value
+        )
+        SELECT
+            #{transactionId}, #{subscriptionId}, NULL, #{walletId},
+            'SUBSCRIPTION', 'CASH', 'OUT', #{amount},
+            uw.cash_balance, 0, 0,
+            NOW(), 0, #{hashValue}
+        FROM updated_wallet uw
+            RETURNING transaction_id
+    </select>
+
+</mapper>
