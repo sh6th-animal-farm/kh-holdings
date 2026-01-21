@@ -41,7 +41,7 @@ public class OrderController {
 	}
 
 	// 주문 취소
-	@PostMapping("/{tokenId}/{orderId}")
+	@PostMapping("/cancel/{tokenId}/{orderId}")
 	public ResponseEntity<String> cancelOrder(@PathVariable Long tokenId, @PathVariable Long orderId) {
 		boolean isCancelled = orderService.cancelOrder(tokenId, orderId);
 
