@@ -8,7 +8,6 @@ import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.order.OrderRepository;
@@ -29,8 +28,6 @@ public class OrderRedisService {
 
 	private final RedissonClient redissonClient;
 	private final OrderRepository orderRepository;
-	private final RedisTemplate<String, String> redisTemplate;
-	private final SnowflakeIdGenerator snowflakeIdGenerator;
 
 	public void processOrder(OrderRequestDTO myOrderDTO) {
 		Long myOrderId = myOrderDTO.getOrderId();
@@ -159,10 +156,10 @@ public class OrderRedisService {
 			BigDecimal executedAmount = targetPrice.multiply(executedVolume); // 총 체결 = 상대방 단가(가장 유리) * 체결할 수량
 
 			Long tradeId = SnowflakeIdGenerator.nextId(); // 체결 번호 (매수-매도 체결에 대해 동일한 번호 부여)
-			Long txId1 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 현금 지출
-			Long txId2 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 토큰 유입
-			Long txId3 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 현금 유입
-			Long txId4 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 토큰 지출
+			Long txId1 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 현금 지출
+			Long txId2 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 토큰 유입
+			Long txId3 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 현금 유입
+			Long txId4 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 토큰 지출
 
 			long buyOrderId = (myOrderDTO.getOrderSide() == OrderSide.BUY) ? myOrderId : targetOrderId;
 			long sellOrderId = (myOrderDTO.getOrderSide() == OrderSide.SELL) ? myOrderId : targetOrderId;
@@ -232,7 +229,7 @@ public class OrderRedisService {
 					&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
 
 				orderRepository.p_cancel_order_and_refund(
-					snowflakeIdGenerator.nextId(),
+					SnowflakeIdGenerator.nextId(),
 					myOrderId,
 					myOrderDTO.getRemainingCash(),
 					BigDecimal.ZERO
@@ -247,7 +244,7 @@ public class OrderRedisService {
 			// 부분 체결 시,
 			if (myOrderDTO.getOrderType() == OrderType.MARKET) {
 				// 1) 시장가 주문은 미체결 수량 즉시 환불
-				Long txId = snowflakeIdGenerator.nextId();
+				Long txId = SnowflakeIdGenerator.nextId();
 				orderRepository.p_cancel_order_and_refund(txId, myOrderId, myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken()); // DB 환불 프로시저 호출
 				removeOrder(myOrderDTO.getTokenId(), mySide, myOrderId); // 호가창과 상세 정보에서 내 주문 제거
 				log.info("시장가 주문 매칭 종료로 잔량 환불: OrderId {}", myOrderId);
@@ -267,5 +264,34 @@ public class OrderRedisService {
 		redissonClient.getScoredSortedSet(bookKey).remove(orderId); // 호가창에서 삭제
 		redissonClient.getMap(infoKey).remove(orderId); // 주문 상세에서 삭제
 
+	}
+
+	// 주문 취소 (사용자가 직접)
+	public boolean cancelOrder(Long tokenId, Long orderId){
+		String orderInfoKey = RedisKeyManager.getOrderInfoKey(tokenId);
+		RMap<Long, OrderRequestDTO> infoMap = redissonClient.getMap(orderInfoKey);
+
+		// 1. 주문 정보 확인 (이미 취소되었거나 없을 경우)
+		OrderRequestDTO orderInfo = infoMap.get(orderId); // 주문 정보 가져오기
+		if (orderInfo == null) {
+			return false; // 이미 처리된 주문이거나 존재하지 않음
+		}
+
+		try {
+			// 2. DB 프로시저 호출
+			orderRepository.p_cancel_order_and_refund(
+				SnowflakeIdGenerator.nextId(),
+				orderId,
+				orderInfo.getRemainingCash(),
+				orderInfo.getRemainingToken()
+			);
+
+			// 3. Redis에서 완전 제거
+			removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
+			return true;
+		} catch (Exception e) {
+			log.error("취소 처리 중 오류 발생: {}", e.getMessage());
+			return false;
+		}
 	}
 }
