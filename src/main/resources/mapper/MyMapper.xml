@@ -78,22 +78,14 @@
 
     <select id="selectTxHistByWalletId" resultType="TransactionHistDTO">
         SELECT
-<<<<<<< HEAD
             MIN(th.created_at) AS created_at,
-=======
-        to_char(MIN(th.created_at), 'yyyy/mm/dd hh24:mi:ss'::timestamp) AS created_at,
->>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
             CASE
                 WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'BUY' THEN 'BUY'
                 WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'SELL' THEN 'SELL'
                 ELSE th.transaction_type::text
                 END AS transaction_type,
             COALESCE(MAX(t.token_name), '-') AS token_name,
-<<<<<<< HEAD
             COALESCE(MAX(t.token_id), 0) AS token_id,
-=======
-            COALESCE(MAX(t.ticker_symbol), '-') AS ticker_symbol,
->>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
             CASE
                 WHEN th.transaction_type = 'TRADE' THEN
                     ABS(SUM(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END)) /
@@ -110,11 +102,7 @@
                  LEFT JOIN tokens t ON o.token_id = t.token_id
         WHERE th.wallet_id = #{walletId}
         <if test="category != null and category != ''">
-<<<<<<< HEAD
             AND th.transaction_type = #{category}
-=======
-            AND th.transaction_type = #{category})
->>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
         </if>
         <if test="period != null and period != ''">
             <choose>
@@ -125,32 +113,19 @@
                     AND created_at >= NOW() - INTERVAL '1 month'
                 </when>
                 <when test="period == '3M'">
-<<<<<<< HEAD
                     AND created_at >= NOW() - INTERVAL '3 months'
                 </when>
                 <when test="period == '6M'">
                     AND created_at >= NOW() - INTERVAL '6 months'
-=======
-                    AND created_at >= NOW() - INTERVAL '3 month'
-                </when>
-                <when test="period == '6M'">
-                    AND created_at >= NOW() - INTERVAL '6 month'
->>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
                 </when>
             </choose>
         </if>
         GROUP BY
             COALESCE(th.trade_id, th.transaction_id),
             th.transaction_type
-<<<<<<< HEAD
         ORDER BY MIN(th.created_at) DESC
             LIMIT 10
         OFFSET <![CDATA[ (#{page} - 1) * 10 ]]>
-=======
-        ORDER BY created_at DESC
-            LIMIT 10
-        OFFSET (#{page} - 1) * 10
->>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
     </select>
 
     <select id="selectAccount">

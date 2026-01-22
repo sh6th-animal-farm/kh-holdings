@@ -17,10 +17,7 @@ public interface MyRepository {
 	// 보유 토큰 조회(페이징)
 	List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page);
 
-<<<<<<< HEAD
 	// 거래 내역 조회(필터 조회, 기간 조회, 페이징)
-=======
->>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
 	List<TransactionRequestDTO> selectTxHistByWalletId(TxHistsSearchDTO searchDTO);
 
 	// 계좌 연동
