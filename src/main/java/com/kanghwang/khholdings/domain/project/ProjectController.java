@@ -21,9 +21,9 @@ public class ProjectController {
 	// 청약 신청
 	@PostMapping("/application/{tokenId}")
 	public ResponseEntity<?> applySubscription(@PathVariable Long tokenId,
-		@RequestParam Long subscriptionId,
-		@RequestParam Long walletId,
-		@RequestParam BigDecimal amount) {
+											   @RequestParam Long subscriptionId,
+											   @RequestParam Long walletId,
+											   @RequestParam BigDecimal amount) {
 
 		try {
 			Long txHistId = projectService.applySubscription(tokenId, subscriptionId, walletId, amount);
@@ -55,7 +55,10 @@ public class ProjectController {
 
 	// 청약 정산 (당첨, 낙첨)
 	@PostMapping("/result/{transactionId}")
-	public ResponseEntity<?> resultSubscription(@PathVariable Long transactionId, @RequestParam Long tokenId, @RequestParam Long passPrice, @RequestParam Long passVolume) {
+	public ResponseEntity<?> resultSubscription(@PathVariable Long transactionId, 
+												@RequestParam Long tokenId, 
+												@RequestParam Long passPrice, 
+												@RequestParam Long passVolume) {
 
 		boolean isCompleted = projectService.resultSubscription(transactionId, tokenId, passPrice, passVolume);
 
