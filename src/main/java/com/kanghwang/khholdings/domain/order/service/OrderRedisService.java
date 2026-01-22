@@ -153,6 +153,13 @@ public class OrderRedisService {
 				// 2) 그 외
 				executedVolume = myOrderDTO.getRemainingToken().min(targetVolume);
 			}
+			
+			// 체결할 수량이 없으면 종료
+			if (executedVolume == null || executedVolume.compareTo(BigDecimal.ZERO) <= 0) {
+				log.info("체결 가능한 수량이 없어 매칭을 종료합니다.");
+				break;
+			}
+			
 			BigDecimal executedAmount = targetPrice.multiply(executedVolume); // 총 체결 = 상대방 단가(가장 유리) * 체결할 수량
 
 			Long tradeId = SnowflakeIdGenerator.nextId(); // 체결 번호 (매수-매도 체결에 대해 동일한 번호 부여)
@@ -168,7 +175,7 @@ public class OrderRedisService {
 
 			try {
 				orderRepository.p_process_transaction_hists(transactionDTO);
-				log.info("Trade Executed: Price {}, Volume {}, Amount {}", targetPrice, executedVolume, executedAmount);
+				log.info("Trade Executed: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
 			} catch (Exception e) {
 				log.error("체결 내역 기록 중 오류 발생: {}", e);
 				break;
