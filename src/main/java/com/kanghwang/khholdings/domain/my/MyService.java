@@ -1,13 +1,13 @@
 package com.kanghwang.khholdings.domain.my;
 
-import java.util.List;
-
+import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
+import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
+import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
+import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
-import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
-import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import java.util.List;
 
 @Service
 public class MyService {
@@ -23,8 +23,8 @@ public class MyService {
 		return myRepository.selectTokenByWalletId(walletId, page);
 	}
 
-	public List<TransactionRequestDTO> selectTxHistByWalletId(Long walletId, Integer page){
-		return myRepository.selectTxHistByWalletId(walletId, page);
+	public List<TransactionRequestDTO> selectTxHistByWalletId(TxHistsSearchDTO searchDTO){
+		return myRepository.selectTxHistByWalletId(searchDTO);
 	}
 
 	public Long selectAccount(Long userId){
