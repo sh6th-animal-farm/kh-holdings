@@ -3,8 +3,6 @@ package com.kanghwang.khholdings.domain.my.dto;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
-import com.kanghwang.khholdings.domain.my.type.TransactionHistType;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -18,7 +16,7 @@ import lombok.Setter;
 @AllArgsConstructor
 public class TransactionHistDTO {
     private OffsetDateTime createdAt;           // 거래 일시
-    private TransactionHistType transactionType;    // 구분
+    private String transactionType;    // 구분 [TODO] enum 타입 지정
     private String tokenName;                   // 토큰명
     private Long tickerSymbol;                  // 종목 코드
     private BigDecimal unitPrice;               // 체결 단가
