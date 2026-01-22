@@ -46,10 +46,23 @@ public class ProjectController {
 		boolean isCancelled = projectService.cancelSubscription(transactionId);
 
 		if (isCancelled) {
-			return ResponseEntity.ok("청약 신청이 취소되었습니다.");
+			return ResponseEntity.ok("청약 취소가 완료되었습니다.");
 		} else {
 			return ResponseEntity.badRequest().body("청약 취소에 실패했습니다.");
 		}
 
+	}
+
+	// 청약 정산 (당첨, 낙첨)
+	@PostMapping("/result/{transactionId}")
+	public ResponseEntity<?> resultSubscription(@PathVariable Long transactionId, @RequestParam Long tokenId, @RequestParam Long passPrice, @RequestParam Long passVolume) {
+
+		boolean isCompleted = projectService.resultSubscription(transactionId, tokenId, passPrice, passVolume);
+
+		if (isCompleted) {
+			return ResponseEntity.ok("청약 정산이 완료되었습니다.");
+		} else {
+			return ResponseEntity.badRequest().body("청약 정산에 실패했습니다.");
+		}
 	}
 }

@@ -59,4 +59,65 @@
         FROM update_wallet uw
     </insert>
 
+    <insert id="resultSubscription">
+        /* 1. 청약 신청 정보 및 결과(당첨, 낙첨) 금액 계산 */
+        WITH result AS (
+            SELECT
+                wallet_id, trade_id, amount as total_amount,
+                #{passVolume} as pass_volume,
+                (#{passPrice} * #{passVolume}) as pass_amount,
+                (amount - (#{passPrice} * #{passVolume})) as fail_amount
+            FROM transaction_hists
+            WHERE transaction_id = #{transactionId}
+            AND transaction_type = 'SUBSCRIPTION'
+        ),
+        /* 2. 지갑 잔액 환불 (FAIL) */
+        update_wallet AS (
+            UPDATE wallets w
+            SET cash_balance = w.cash_balance + r.fail_amount,
+                updated_at = NOW()
+                FROM result r
+            WHERE w.wallet_id = r.wallet_id AND r.fail_amount > 0
+            RETURNING w.wallet_id, w.cash_balance
+        ),
+        /* 3. 보유 토큰에 추가 (PASS) */
+        insert_holdings AS (
+            INSERT INTO holdings (
+                wallet_id, token_id, token_balance, reserved,
+                purchased_value, created_at
+            )
+            SELECT
+                r.wallet_id, #{tokenId}, r.pass_volume, 0,
+                r.pass_amount, NOW()
+            FROM result r
+            WHERE r.pass_volume > 0
+            RETURNING wallet_id, token_balance
+        )
+        /* 4. 거래 내역 기록 (PASS / FAIL) */
+        INSERT INTO transaction_hists (
+            transaction_id, trade_id, wallet_id, transaction_type,
+            asset_type, direction, amount, balance_after,
+            remaining_price, remaining_volume, created_at, fee, hash_value
+        )
+        -- 1) 당첨 내역 (PASS)
+        SELECT
+            #{passTransactionId}, r.trade_id, r.wallet_id, 'PASS'::transaction_type_enum,
+            'TOKEN'::asset_type_enum, 'IN'::direction_enum, r.pass_volume, ih.token_balance,
+            0, 0, NOW(), 0, #{passHashValue}
+        FROM result r
+             INNER JOIN insert_holdings ih ON r.wallet_id = ih.wallet_id
+        WHERE r.pass_volume > 0
+
+        UNION ALL
+
+        -- 2) 환불 내역 (FAIL)
+        SELECT
+            #{failTransactionId}, r.trade_id, r.wallet_id, 'FAIL'::transaction_type_enum,
+            'CASH'::asset_type_enum, 'IN'::direction_enum, r.fail_amount, uw.cash_balance,
+            0, 0, NOW(), 0, #{failHashValue}
+        FROM result r
+             INNER JOIN update_wallet uw ON r.wallet_id = uw.wallet_id
+        WHERE r.fail_amount > 0;
+    </insert>
+
 </mapper>

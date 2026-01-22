@@ -45,4 +45,18 @@ public class ProjectService {
 
 		return projectRepository.cancelSubscription(transactionId, newTransactionId, hashValue);
 	}
+
+	@Transactional
+	public boolean resultSubscription(Long transactionId, Long tokenId, Long passPrice, Long passVolume) {
+
+		// 1. Snowflake ID 생성
+		Long passTxId = SnowflakeIdGenerator.nextId();
+		Long failTxId = SnowflakeIdGenerator.nextId();
+
+		// 2. 해시값 생성
+		String passHashValue = DigestUtils.sha256Hex(transactionId.toString());
+		String failHashValue = DigestUtils.sha256Hex(transactionId.toString());
+
+		return projectRepository.resultSubscription(transactionId, tokenId, passTxId, failTxId, passPrice, passVolume, passHashValue, failHashValue);
+	}
 }
