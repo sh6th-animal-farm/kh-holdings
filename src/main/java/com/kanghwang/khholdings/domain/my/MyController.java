@@ -28,7 +28,11 @@ public class MyController {
 		return myService.selectTokenByWalletId(walletId, page);
 	}
 
+<<<<<<< HEAD
 	// 나의 거래 내역 조회(필터 조회, 기간 조회, 페이징)
+=======
+	//나의 거래 내역 조회(청약, 배당, 거래)
+>>>>>>> 537b31cc605d0dba29d706d05b098c2889d7e8d5
 	@GetMapping("/transaction")
 	public List<TransactionRequestDTO> selectTxHistByWalletId(@ModelAttribute TxHistsSearchDTO searchDTO){
 		return myService.selectTxHistByWalletId(searchDTO);
