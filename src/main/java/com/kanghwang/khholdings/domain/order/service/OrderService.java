@@ -43,6 +43,8 @@ public class OrderService {
 		// 2. 주문 요청 시, 미체결 금액(수량)을 주문 금액(수량)으로 초기화
 		if (orderDto.getOrderSide() == OrderSide.BUY) {
 			orderDto.setRemainingCash(orderDto.getTotalPrice());
+		} else {
+			orderDto.setRemainingCash(BigDecimal.ZERO);
 		}
 		orderDto.setRemainingToken(orderDto.getOrderVolume());
 

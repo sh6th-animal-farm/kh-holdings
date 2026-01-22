@@ -12,7 +12,7 @@ public class RedisKeyManager {
 
     // 2. 토큰별 주문 상세 (HASH): 특정 코인 매칭 시 빠른 조회용
     public static String getOrderInfoKey(Long tokenId) {
-        return BASE_PATH + "order:info:" + tokenId;
+        return BASE_PATH + "orderbook:info:" + tokenId;
     }
 
     // 체결 이벤트 스트림 (STREAM/TOPIC): 체결 결과를 DB에 비동기로 보낼 때 사용
