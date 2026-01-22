@@ -16,25 +16,25 @@ public class MyController {
 	@Autowired
 	private MyService myService;
 
-	//특정 계좌 및 지갑 조회
+	// 특정 계좌 및 지갑 조회
 	@GetMapping("/wallet/{walletId}")
 	public List<WalletDTO> selectWalletById(@PathVariable Long walletId){
 		return myService.selectWalletById(walletId);
 	}
 
-	//보유 토큰 조회
+	// 보유 토큰 조회
 	@GetMapping("/token/{walletId}")
 	public List<HoldingDTO> selectTokenByWalletId(@PathVariable Long walletId, @RequestParam Integer page){
 		return myService.selectTokenByWalletId(walletId, page);
 	}
 
-	//나의 거래 내역 조회(청약, 배당, 거래)
+	// 나의 거래 내역 조회(필터 조회, 기간 조회, 페이징)
 	@GetMapping("/transaction")
 	public List<TransactionRequestDTO> selectTxHistByWalletId(@ModelAttribute TxHistsSearchDTO searchDTO){
 		return myService.selectTxHistByWalletId(searchDTO);
 	}
 
-	//계좌 연동
+	// 계좌 연동
 	@GetMapping("/account/{userId}")
 	public Long selectAccount(@PathVariable Long userId){
 		return myService.selectAccount(userId);

@@ -11,11 +11,15 @@ import java.util.List;
 @Mapper
 public interface MyRepository {
 
+	//특정 계좌 및 지갑 조회
 	List<WalletDTO> selectWalletById(Long walletId);
 
+	// 보유 토큰 조회(페이징)
 	List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page);
 
+	// 거래 내역 조회(필터 조회, 기간 조회, 페이징)
 	List<TransactionRequestDTO> selectTxHistByWalletId(TxHistsSearchDTO searchDTO);
 
+	// 계좌 연동
 	Long selectAccount(Long userId);
 }
