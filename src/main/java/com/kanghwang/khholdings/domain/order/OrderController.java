@@ -35,8 +35,8 @@ public class OrderController {
 
 	// 매수/매도 주문
 	@PostMapping
-	public ResponseEntity<String> placeOrder(@RequestBody OrderRequestDTO orderDto) {
-		orderService.placeOrder(orderDto);
+	public ResponseEntity<String> placeOrder(@RequestBody OrderRequestDTO orderDTO) {
+		orderService.placeOrder(orderDTO);
 		return ResponseEntity.ok("주문이 완료되었습니다.");
 	}
 
