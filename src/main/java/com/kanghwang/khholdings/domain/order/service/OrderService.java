@@ -4,14 +4,19 @@ import java.math.BigDecimal;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.kanghwang.khholdings.domain.order.OrderRepository;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
+import com.kanghwang.khholdings.domain.order.type.OrderType;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderService {
@@ -40,19 +45,32 @@ public class OrderService {
 		Long orderId = snowflakeIdGenerator.nextId();
 		orderDto.setOrderId(orderId);
 
-		// 2. 주문 요청 시, 미체결 금액(수량)을 주문 금액(수량)으로 초기화
+		// 2. 주문 요청 시, 미체결 금액 및 미체결 수량 초기화
+		// 1) 미체결 금액: 매수(BUY)는 총 주문 금액으로, 매도(SELL)은 0으로 초기화
 		if (orderDto.getOrderSide() == OrderSide.BUY) {
 			orderDto.setRemainingCash(orderDto.getTotalPrice());
 		} else {
 			orderDto.setRemainingCash(BigDecimal.ZERO);
 		}
-		orderDto.setRemainingToken(orderDto.getOrderVolume());
 
-		// 2. DB에 저장하라고 넘김
+		// 2) 미체결 수량: 시장가 매수(MARKET, BUY)는 0으로, 그 외는 총 주문 수량으로 초기화
+		if (orderDto.getOrderType() == OrderType.MARKET && orderDto.getOrderSide() == OrderSide.BUY) {
+			orderDto.setRemainingToken(BigDecimal.ZERO);
+		} else {
+			orderDto.setRemainingToken(orderDto.getOrderVolume());
+		}
+
+		// 3. DB에서 최소 주문 금액(수량) 확인, 자산 검증 및 동결, 주문 생성
 		orderDBService.placeOrder(orderDto);
 
-		// 3. Redis에 동일한 요청
-		orderRedisService.processOrder(orderDto);
+		// 4. DB에서 주문 생성 후, Redis 매칭 엔진에 추가
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				orderRedisService.processOrder(orderDto);
+				log.info("[OrderService] DB 커밋 완료 후 Redis 엔진에 주문 추가: {}", orderDto.getOrderId());
+			}
+		});
 	}
 
 	// 주문 취소
