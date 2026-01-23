@@ -1,4 +1,4 @@
-package com.kanghwang.khholdings.global.errr;
+package com.kanghwang.khholdings.global.err;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
