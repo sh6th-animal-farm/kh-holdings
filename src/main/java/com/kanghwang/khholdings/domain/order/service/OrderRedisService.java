@@ -8,7 +8,6 @@ import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.order.OrderRepository;
@@ -29,7 +28,6 @@ public class OrderRedisService {
 
 	private final RedissonClient redissonClient;
 	private final OrderRepository orderRepository;
-	private final RedisTemplate<String, Object> redisTemplate;
 
 	public void processOrder(OrderRequestDTO myOrderDTO) {
 		Long myOrderId = myOrderDTO.getOrderId();

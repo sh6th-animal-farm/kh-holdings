@@ -85,7 +85,7 @@
                 ELSE th.transaction_type::text
                 END AS transaction_type,
             COALESCE(MAX(t.token_name), '-') AS token_name,
-            COALESCE(MAX(t.ticker_symbol), '-') AS ticker_symbol,
+            COALESCE(MAX(t.token_id), 0) AS token_id,
             CASE
                 WHEN th.transaction_type = 'TRADE' THEN
                     ABS(SUM(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END)) /
@@ -102,7 +102,7 @@
                  LEFT JOIN tokens t ON o.token_id = t.token_id
         WHERE th.wallet_id = #{walletId}
         <if test="category != null and category != ''">
-            AND th.transaction_type = #{category})
+            AND th.transaction_type = #{category}
         </if>
         <if test="period != null and period != ''">
             <choose>
@@ -113,19 +113,19 @@
                     AND created_at >= NOW() - INTERVAL '1 month'
                 </when>
                 <when test="period == '3M'">
-                    AND created_at >= NOW() - INTERVAL '3 month'
+                    AND created_at >= NOW() - INTERVAL '3 months'
                 </when>
                 <when test="period == '6M'">
-                    AND created_at >= NOW() - INTERVAL '6 month'
+                    AND created_at >= NOW() - INTERVAL '6 months'
                 </when>
             </choose>
         </if>
         GROUP BY
             COALESCE(th.trade_id, th.transaction_id),
             th.transaction_type
-        ORDER BY created_at DESC
+        ORDER BY MIN(th.created_at) DESC
             LIMIT 10
-        OFFSET (#{page} - 1) * 10
+        OFFSET <![CDATA[ (#{page} - 1) * 10 ]]>
     </select>
 
     <select id="selectAccount">
