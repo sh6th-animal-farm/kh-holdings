@@ -5,15 +5,17 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import org.redisson.RedissonShutdownException;
 import org.redisson.api.RStream;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.StreamMessageId;
 import org.redisson.api.stream.StreamReadArgs;
-import org.redisson.codec.SerializationCodec;
+import org.redisson.codec.JsonJacksonCodec;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 
@@ -55,7 +57,12 @@ public class TradeWorker implements CommandLineRunner {
 
     private void processStream() {
 
-        RStream<String, Object> stream = redissonClient.getStream("trade:stream:", new SerializationCodec());
+        // Jackson이 OffsetDateTime을 읽을 있도록 JavaTimeModule 등록
+        ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule()) // Java 8 날짜 타입 지원 추가
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        RStream<String, Object> stream = redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper));
         StreamMessageId lastId = StreamMessageId.ALL; // 처음부터 혹은 최신부터 읽기 설정 가능
 
         while (isRunning) {
@@ -69,15 +76,16 @@ public class TradeWorker implements CommandLineRunner {
                 if (messages.isEmpty()) continue;
 
                 for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
-                    Map<String, Object> dataMap = entry.getValue();
-                    Object payload = dataMap.get("data");
+                    Object data = entry.getValue().get("data");
                     try {
-                        if(payload instanceof TransactionRequestDTO) {
+                        if(data instanceof TransactionRequestDTO) {
                             // 1. 체결 정산 처리
-                            handleTransaction((TransactionRequestDTO) payload);
-                        } else if (payload instanceof RefundRequestDTO) {
+                            TransactionRequestDTO transactionDTO = objectMapper.convertValue(data, TransactionRequestDTO.class);
+                            handleTransaction(transactionDTO);
+                        } else if (data instanceof RefundRequestDTO) {
                             // 2. 취소 및 환불 처리
-                            handleRefund((RefundRequestDTO) payload);
+                            RefundRequestDTO refundDTO = objectMapper.convertValue(data, RefundRequestDTO.class);
+                            handleRefund(refundDTO);
                         }
 
                         stream.remove(lastId);   // Redis에서 정산 완료한 데이터 제거
@@ -88,16 +96,15 @@ public class TradeWorker implements CommandLineRunner {
                     }
                 }
             } catch (Exception e) {
-                // 앱 종료 중 Redisson이 먼저 꺼져서 에러가 날 수 있음 (정상)
-                if (!isRunning && (e instanceof RedissonShutdownException || e.getCause() instanceof RedissonShutdownException)) {
-                    log.info("[TradeWorker] 종료 중 Redisson 연결이 먼저 해제됨 (정상)");
-                } else {
-                    log.error("[TradeWorker] 오류 발생: ", e);
-                }
-                break; // 루프 탈출
-            } finally {
-                shutdownLatch.countDown(); // 래치의 await 풀기
+                log.error("[TradeWorker] 오류 발생: ", e);
+                break;
+            }
+
+            try {
+                shutdownLatch.countDown(); // await로 인해 기다리던 래치 풀어주기
                 log.info("[TradeWorker] 워커 스레드가 안전하게 루프를 종료했습니다.");
+            } catch (Exception e) {
+                log.error("[TradeWorker] 종료 정리 중 오류: ", e);
             }
         }
     }
@@ -115,7 +122,7 @@ public class TradeWorker implements CommandLineRunner {
     // [환불/취소] DB 프로시저 호출
     private void handleRefund(RefundRequestDTO refundDTO) {
         try {
-            orderRepository.p_cancel_order_and_refund(refundDTO.getTxId(), refundDTO.getOrderId(), refundDTO.getRemainingCash(), refundDTO.getRemainingToken());
+            orderRepository.p_cancel_order_and_refund(refundDTO);
             log.info("[TradeWorker] 환불/취소 처리 완료: OrderID {}", refundDTO.getOrderId());
         } catch (Exception e) {
             log.error("[TradeWorker] 환불/취소 처리 실패: {}", e.getMessage());
