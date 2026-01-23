@@ -2,7 +2,7 @@ package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.concurrent.TimeUnit;
 
 import org.redisson.api.RLock;
@@ -173,7 +173,8 @@ public class OrderRedisService {
 			long buyOrderId = (myOrderDTO.getOrderSide() == OrderSide.BUY) ? myOrderId : targetOrderId;
 			long sellOrderId = (myOrderDTO.getOrderSide() == OrderSide.SELL) ? myOrderId : targetOrderId;
 
-			TransactionRequestDTO transactionDTO = new TransactionRequestDTO(txId1, txId2, txId3, txId4, tradeId, buyOrderId, sellOrderId, targetPrice, executedVolume, F_RATE, LocalDateTime.now(), mySide);
+			TransactionRequestDTO transactionDTO = new TransactionRequestDTO(txId1, txId2, txId3, txId4, tradeId, buyOrderId, sellOrderId, targetPrice, executedVolume, F_RATE,
+				OffsetDateTime.now(), mySide);
 
 			// 체결이 발생할 때마다 Redis에 데이터 저장
 
