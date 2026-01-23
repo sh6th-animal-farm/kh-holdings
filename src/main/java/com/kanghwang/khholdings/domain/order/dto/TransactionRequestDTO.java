@@ -2,7 +2,7 @@ package com.kanghwang.khholdings.domain.order.dto;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 
@@ -31,6 +31,6 @@ public class TransactionRequestDTO implements Serializable {
 	private BigDecimal targetPrice;
 	private BigDecimal executedVolume;
 	private BigDecimal feeRate;
-	private LocalDateTime createdAt; 		// 체결 시각
+	private OffsetDateTime createdAt; 		// 체결 시각
 	private OrderSide takerSide;       		// 체결을 유발한 쪽 (=나, BUY or SELL)
 }
