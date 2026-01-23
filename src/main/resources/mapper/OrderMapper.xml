@@ -5,7 +5,7 @@
 
     <select id="selectHoldingTokenBalance" parameterType="Long" resultType="bigdecimal">
         SELECT
-            token_balance
+            COALESCE(token_balance, 0)
         FROM
             holdings
         WHERE
@@ -16,7 +16,7 @@
 
     <select id="selectAvailableBalance" parameterType="Long" resultType="bigdecimal">
         SELECT
-            available_balance
+            (cash_balance - frozen_amount)
         FROM
             wallets
         WHERE

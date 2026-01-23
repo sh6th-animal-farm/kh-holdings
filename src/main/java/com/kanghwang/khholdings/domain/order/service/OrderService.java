@@ -2,6 +2,7 @@ package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,7 +12,10 @@ import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderService {
@@ -46,13 +50,34 @@ public class OrderService {
 		} else {
 			orderDto.setRemainingCash(BigDecimal.ZERO);
 		}
+
 		orderDto.setRemainingToken(orderDto.getOrderVolume());
 
-		// 2. DB에 저장하라고 넘김
+		// 3. [FEAT] 서비스 단에서의 1차 잔액 검증
+		if (orderDto.getOrderSide() == OrderSide.BUY) {
+			BigDecimal available_cash = orderDBService.selectAvailableBalance(orderDto.getWalletId());
+			if (available_cash.compareTo(orderDto.getTotalPrice()) < 0) {
+				throw new RuntimeException("잔액이 부족합니다.");
+			}
+		} else {
+			BigDecimal holdingToken = orderDBService.selectHoldingTokenBalance(orderDto.getWalletId(), orderDto.getTokenId());
+			if (holdingToken.compareTo(orderDto.getOrderVolume()) < 0) {
+				throw new RuntimeException("보유 수량이 부족합니다.");
+			}
+		}
+
+		// 2. DB에서 잔액 차감 및 홀딩
+		// 기존의 프로시저 그대로 사용
 		orderDBService.placeOrder(orderDto);
 
 		// 3. Redis에 동일한 요청
-		orderRedisService.processOrder(orderDto);
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				orderRedisService.processOrder(orderDto);
+				log.info("[OrderService] DB 커밋 완료 후 Redis 엔진에 주문 추가: {}", orderDto.getOrderId());
+			}
+		});
 	}
 
 	// 주문 취소
