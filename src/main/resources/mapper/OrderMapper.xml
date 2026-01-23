@@ -38,17 +38,18 @@
 
     <update id="p_process_transaction_hists" parameterType="TransactionRequestDTO" statementType="CALLABLE">
         CALL p_process_transaction_hists(
-                #{txId1},
-                #{txId2},
-                #{txId3},
-                #{txId4},
-                #{tradeId},
-                #{buyOrderId},
-                #{sellOrderId},
-                #{targetPrice},
-                #{executedVolume},
-                #{feeRate}
-               )
+            #{txId1},
+            #{txId2},
+            #{txId3},
+            #{txId4},
+            #{tradeId},
+            #{buyOrderId},
+            #{sellOrderId},
+            #{targetPrice},
+            #{executedVolume},
+            #{feeRate},
+            #{createdAt}
+        )
     </update>
 
     <update id="p_cancel_order_and_refund" statementType="CALLABLE">
