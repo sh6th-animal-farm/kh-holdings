@@ -52,7 +52,7 @@
         )
     </update>
 
-    <update id="p_cancel_order_and_refund" statementType="CALLABLE">
+    <update id="p_cancel_order_and_refund" parameterType="RefundRequestDTO" statementType="CALLABLE">
         CALL p_cancel_order_and_refund(
             #{txId},
             #{orderId},

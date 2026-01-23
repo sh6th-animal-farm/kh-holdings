@@ -10,9 +10,13 @@ import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
+import org.redisson.codec.JsonJacksonCodec;
 import org.redisson.codec.SerializationCodec;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
@@ -77,6 +81,11 @@ public class OrderRedisService {
 		}
 		myOrderBook.add(score.doubleValue(), myOrderId); // 해당 토큰 호가창에 내 주문 등록
 		infoMap.put(myOrderId, myOrderDTO); // 해당 토큰 주문 상세에 내 주문 등록
+
+		// Jackson이 OffsetDateTime을 읽을 있도록 JavaTimeModule 등록
+		ObjectMapper objectMapper = new ObjectMapper()
+			.registerModule(new JavaTimeModule()) // Java 8 날짜 타입 지원 추가
+			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS); // ISO-8601 형식(문자열)으로 전송
 
 		while (true) {
 
@@ -186,7 +195,7 @@ public class OrderRedisService {
 
 			// (2) 실시간 프론트엔드 전파용 (Pub/Sub)
 			// WebSocketWorker가 받아서 웹소켓으로 전송
-			redissonClient.getTopic("trade:topic:" + myOrderDTO.getTokenId())
+			redissonClient.getTopic("trade:topic:" + myOrderDTO.getTokenId(), new JsonJacksonCodec(objectMapper))
 					.publish(transactionDTO);
 
 			// (3) 현재가 갱신 (예: "ticker:last_price:{tokenId}")

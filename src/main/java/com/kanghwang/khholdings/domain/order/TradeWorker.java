@@ -115,7 +115,7 @@ public class TradeWorker implements CommandLineRunner {
     // [환불/취소] DB 프로시저 호출
     private void handleRefund(RefundRequestDTO refundDTO) {
         try {
-            orderRepository.p_cancel_order_and_refund(refundDTO.getTxId(), refundDTO.getOrderId(), refundDTO.getRemainingCash(), refundDTO.getRemainingToken());
+            orderRepository.p_cancel_order_and_refund(refundDTO);
             log.info("[TradeWorker] 환불/취소 처리 완료: OrderID {}", refundDTO.getOrderId());
         } catch (Exception e) {
             log.error("[TradeWorker] 환불/취소 처리 실패: {}", e.getMessage());
