@@ -67,8 +67,8 @@ public class OrderService {
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCommit() {
+				log.info("매칭 엔진에 주문 추가: {}", orderDTO.getOrderId());
 				orderRedisService.processOrder(orderDTO);
-				log.info("[OrderService] DB 커밋 완료 후 Redis 엔진에 주문 추가: {}", orderDTO.getOrderId());
 			}
 		});
 	}
