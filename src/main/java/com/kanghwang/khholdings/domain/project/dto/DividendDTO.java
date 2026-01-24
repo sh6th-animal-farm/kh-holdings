@@ -2,17 +2,17 @@ package com.kanghwang.khholdings.domain.project.dto;
 
 import java.math.BigDecimal;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DividendDTO {
-	private Long userId;
-	private Long tokenId;
-	private BigDecimal tokenBalance;
+	private Long transactionId;
+	private Long dividendId;
+	private Long walletId;
+	private BigDecimal amount;
+	private String hashValue;
 }
