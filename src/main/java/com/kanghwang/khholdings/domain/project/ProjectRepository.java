@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendDTO;
+import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
 import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionDTO;
 
@@ -37,6 +38,9 @@ public interface ProjectRepository {
 
 	// 토큰 삭제
 	void deleteToken(Long tokenId);
+
+	// 토큰 발생
+	int openToken(OpenDTO openDTO);
 
 	// 토큰 존재 여부 확인
 	Map<String, Object> checkTokenStatus(Long tokenId);

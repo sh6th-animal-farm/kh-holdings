@@ -284,6 +284,22 @@
             token_id = #{tokenId}
     </update>
 
+    <insert id="openToken" parameterType="OpenDTO">
+        INSERT INTO tokens (
+            token_name,
+            ticker_symbol,
+            total_supply,
+            issue_price,
+            created_at
+        ) VALUES (
+             #{tokenName},
+             #{tickerSymbol},
+             #{totalSupply},
+             #{issuePrice},
+             #{createdAt}
+         )
+    </insert>
+
     <select id="checkTokenStatus" resultType="map">
         -- 토큰 존재 여부 확인
         SELECT
