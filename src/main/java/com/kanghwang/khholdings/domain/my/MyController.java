@@ -65,6 +65,6 @@ public class MyController {
 		if (walletId == null) {
 			return ResponseEntity.badRequest().body(ApiResponse.error("계좌 연동에 실패했습니다."));
 		}
-		return ResponseEntity.ok(ApiResponse.success("거래 내역 조회에 성공했습니다.", walletId));
+		return ResponseEntity.ok(ApiResponse.success("계좌 연동에 성공했습니다.", walletId));
 	}
 }
