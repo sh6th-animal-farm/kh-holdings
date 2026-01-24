@@ -26,13 +26,14 @@ public class ProjectService {
 
 	private final ProjectRepository projectRepository;
 	private final MarketRepository marketRepository;
+	private final SnowflakeIdGenerator snowflakeIdGenerator;
 
 	// 청약 신청
 	@Transactional
 	public Long applySubscription(Long tokenId, Long subscriptionId, Long walletId, BigDecimal amount) {
 
 		// 1. Snowflake ID 생성
-		Long transactionId = SnowflakeIdGenerator.nextId();
+		Long transactionId = snowflakeIdGenerator.nextId();
 
 		// 2. 해시값 생성
 		String hashValue = DigestUtils.sha256Hex(transactionId.toString() + walletId.toString());
@@ -53,7 +54,7 @@ public class ProjectService {
 	public boolean cancelSubscription(Long transactionId) {
 
 		// 1. Snowflake ID 생성
-		Long newTransactionId = SnowflakeIdGenerator.nextId();
+		Long newTransactionId = snowflakeIdGenerator.nextId();
 
 		// 2. 해시값 생성
 		String hashValue = DigestUtils.sha256Hex(transactionId.toString());
@@ -75,8 +76,8 @@ public class ProjectService {
 		for (SubscriptionRequestDTO subRequestDTO : subRequestList) {
 
 			// 1. Snowflake ID 생성
-			Long passTxId = SnowflakeIdGenerator.nextId();
-			Long failTxId = SnowflakeIdGenerator.nextId();
+			Long passTxId = snowflakeIdGenerator.nextId();
+			Long failTxId = snowflakeIdGenerator.nextId();
 
 			// 2. 해시값 생성
 			String passHashValue = DigestUtils.sha256Hex(passTxId.toString());
@@ -136,7 +137,7 @@ public class ProjectService {
 
 		for (DividendRequestDTO dividendRequestDTO : divRequestList) {
 
-			Long transactionId = SnowflakeIdGenerator.nextId();
+			Long transactionId = snowflakeIdGenerator.nextId();
 			String hashValue = DigestUtils.sha256Hex(transactionId.toString());
 
 			DividendDTO dividendDTO = DividendDTO.builder()
@@ -200,8 +201,8 @@ public class ProjectService {
 			BigDecimal amount = holder.getTotalBalance();          // 토큰 보유 수량
 			BigDecimal cashAmount = amount.multiply(currentPrice); // 시세를 기준으로 환전
 
-			Long txId1 = SnowflakeIdGenerator.nextId();
-			Long txId2 = SnowflakeIdGenerator.nextId();
+			Long txId1 = snowflakeIdGenerator.nextId();
+			Long txId2 = snowflakeIdGenerator.nextId();
 
 			BurnDTO burnDTO = BurnDTO.builder()
 				.txId1(txId1)

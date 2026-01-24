@@ -31,7 +31,7 @@ public class TradingSimulationBot {
 
 	// 0.3초마다 주문
 	@Async
-	@Scheduled(fixedDelay = 10)
+	@Scheduled(fixedDelay = 300)
 	public void runSimulation() {
 		if (!isRunning) {
 			return;
@@ -50,7 +50,7 @@ public class TradingSimulationBot {
 			orderService.placeOrder(randomOrder);
 
 		} catch (Exception e) {
-			log.error(">>>> [BOT] 주문 처리 중 오류: {}", e.getMessage());
+			log.error(">>>> [BOT] 주문 처리 중 오류: ", e);
 		}
 	}
 

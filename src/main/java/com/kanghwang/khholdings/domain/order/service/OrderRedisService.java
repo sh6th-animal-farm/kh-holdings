@@ -38,6 +38,7 @@ public class OrderRedisService {
 		.registerModule(new JavaTimeModule()) // Java 8 날짜 타입 지원 추가
 		.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
+	private final SnowflakeIdGenerator snowflakeIdGenerator;
 	private final RedissonClient redissonClient;
 	private static final BigDecimal F_RATE = new BigDecimal("0.0006"); // 수수료 관리
 
@@ -85,8 +86,15 @@ public class OrderRedisService {
 			// 매수인 경우, 내림차순 정렬을 위해 가격을 음수로 변환
 			score = score.negate();
 		}
-		myOrderBook.add(score.doubleValue(), myOrderId); // 해당 토큰 호가창에 내 주문 등록
+
+		if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
+			// 처음부터 지정가만 호가창에 들어가도록
+			myOrderBook.add(score.doubleValue(), myOrderId); // 해당 토큰 호가창에 내 주문 등록
+		}
+
 		infoMap.put(myOrderId, myOrderDTO); // 해당 토큰 주문 상세에 내 주문 등록
+
+
 
 		// 지정가 주문 정보를 실시간으로 전파 -> MarketWorker가 받아서 웹소켓으로 전송
 		// if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
@@ -180,17 +188,20 @@ public class OrderRedisService {
 			
 			BigDecimal executedAmount = targetPrice.multiply(executedVolume); // 총 체결 = 상대방 단가(가장 유리) * 체결할 수량
 
-			Long tradeId = SnowflakeIdGenerator.nextId(); // 체결 번호 (매수-매도 체결에 대해 동일한 번호 부여)
-			Long txId1 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 현금 지출
-			Long txId2 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 토큰 유입
-			Long txId3 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 현금 유입
-			Long txId4 = SnowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 토큰 지출
+			Long tradeId = snowflakeIdGenerator.nextId(); // 체결 번호 (매수-매도 체결에 대해 동일한 번호 부여)
+			Long txId1 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 현금 지출
+			Long txId2 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매수자 토큰 유입
+			Long txId3 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 현금 유입
+			Long txId4 = snowflakeIdGenerator.nextId();   // 거래 내역 번호 - 매도자 토큰 지출
 
+			long tokenId = myOrderDTO.getTokenId();
+			long buyWalletId = (myOrderDTO.getOrderSide() == OrderSide.BUY) ? myOrderDTO.getWalletId() : targetOrderDTO.getWalletId();
+			long sellWalletId = (myOrderDTO.getOrderSide() == OrderSide.SELL) ? myOrderDTO.getWalletId() : targetOrderDTO.getWalletId();
 			long buyOrderId = (myOrderDTO.getOrderSide() == OrderSide.BUY) ? myOrderId : targetOrderId;
 			long sellOrderId = (myOrderDTO.getOrderSide() == OrderSide.SELL) ? myOrderId : targetOrderId;
 
 			TransactionRequestDTO transactionDTO = new TransactionRequestDTO(txId1, txId2, txId3, txId4, tradeId, buyOrderId, sellOrderId, targetPrice, executedVolume, F_RATE,
-				OffsetDateTime.now(), mySide);
+				OffsetDateTime.now(), mySide, tokenId, buyWalletId, sellWalletId);
 
 			// 체결이 발생할 때마다 Redis에 데이터 전달
 			// -> DB 저장 / 웹소켓 실시간 전송
@@ -280,7 +291,7 @@ public class OrderRedisService {
 					&& myOrderDTO.getOrderSide() == OrderSide.BUY
 					&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
-				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(SnowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
+				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
 				redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper))
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
 				log.info("지정가 매수 차액 환불: 주문ID {}, 환불금액 {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash());
@@ -292,7 +303,7 @@ public class OrderRedisService {
 			if (myOrderDTO.getOrderType() == OrderType.MARKET) {
 				// 1) 시장가 주문은 미체결 수량 즉시 환불
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
-				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(SnowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken());
+				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken());
 				redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper))
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
 				log.info("시장가 주문 매칭 종료로 잔량 환불: OrderId {}", myOrderDTO.getOrderId());
@@ -337,7 +348,7 @@ public class OrderRedisService {
 			removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
 
 			// 3. 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
-			RefundRequestDTO refundRequestDTO = new RefundRequestDTO(SnowflakeIdGenerator.nextId(), orderId, orderInfo.getRemainingCash(), orderInfo.getRemainingToken());
+			RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), orderId, orderInfo.getRemainingCash(), orderInfo.getRemainingToken());
 			redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper))
 				.add(StreamAddArgs.entry("data", refundRequestDTO));
 

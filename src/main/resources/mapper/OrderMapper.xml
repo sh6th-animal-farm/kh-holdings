@@ -3,6 +3,7 @@
 
 <mapper namespace="com.kanghwang.khholdings.domain.order.OrderRepository">
 
+    <!-- 특정 토큰 보유 수량 조회 -->
     <select id="selectHoldingTokenBalance" parameterType="Long" resultType="bigdecimal">
         SELECT
             COALESCE(token_balance, 0)
@@ -14,6 +15,7 @@
             wallet_id = #{walletId}
     </select>
 
+    <!-- 사용 가능한 잔액 조회 -->
     <select id="selectAvailableBalance" parameterType="Long" resultType="bigdecimal">
         SELECT
             (cash_balance - frozen_amount)
@@ -23,6 +25,7 @@
             wallet_id  = #{walletId}
     </select>
 
+    <!-- 주문 프로시저 -->
     <update id="callPlaceOrderProcedure" parameterType="OrderRequestDTO" statementType="CALLABLE">
         CALL p_create_order(
             #{orderId},
@@ -36,22 +39,28 @@
         )
     </update>
 
-    <update id="p_process_transaction_hists" parameterType="TransactionRequestDTO" statementType="CALLABLE">
-        CALL p_process_transaction_hists(
-            #{txId1},
-            #{txId2},
-            #{txId3},
-            #{txId4},
-            #{tradeId},
-            #{buyOrderId},
-            #{sellOrderId},
-            #{targetPrice},
-            #{executedVolume},
-            #{feeRate},
-            #{createdAt}
+    <!-- 정산 전용 프로시저 호출 (OUT 파라미터 매핑) -->
+    <update id="p_process_transaction_settlement" statementType="CALLABLE">
+        CALL p_process_transaction_settlement(
+            #{trade.tradeId},
+            #{trade.buyOrderId},
+            #{trade.sellOrderId},
+            #{trade.targetPrice},
+            #{trade.executedVolume},
+            #{result.buyCashAfter, mode=OUT, jdbcType=NUMERIC},
+            #{result.buyTokenAfter, mode=OUT, jdbcType=NUMERIC},
+            #{result.sellCashAfter, mode=OUT, jdbcType=NUMERIC},
+            #{result.sellTokenAfter, mode=OUT, jdbcType=NUMERIC},
+            #{result.buyRemCash, mode=OUT, jdbcType=NUMERIC},
+            #{result.buyRemToken, mode=OUT, jdbcType=NUMERIC},
+            #{result.sellRemCash, mode=OUT, jdbcType=NUMERIC},
+            #{result.sellRemToken, mode=OUT, jdbcType=NUMERIC},
+            #{trade.feeRate, jdbcType=NUMERIC},
+            #{trade.createdAt, jdbcType=TIMESTAMP}
         )
     </update>
 
+    <!-- 환불 프로시저 -->
     <update id="p_cancel_order_and_refund" parameterType="RefundRequestDTO" statementType="CALLABLE">
         CALL p_cancel_order_and_refund(
             #{txId},
@@ -60,4 +69,47 @@
             #{remainingToken}
         )
     </update>
+
+    <!-- 체결 내역 벌크 인서트 -->
+    <insert id="bulkInsertTradeHistory">
+        INSERT INTO kh_holdings.transaction_hists (
+        transaction_id, trade_id, order_id, wallet_id,
+        transaction_type, asset_type, direction, amount,
+        balance_after, remaining_volume, remaining_price, fee,
+        hash_value, created_at
+        ) VALUES
+        <foreach collection="list" item="h" separator=",">
+            (
+            #{h.transactionId}, #{h.tradeId}, #{h.orderId}, #{h.walletId},
+            #{h.transactionType}::kh_holdings.transaction_type_enum,
+            #{h.assetType}::kh_holdings.asset_type_enum,
+            #{h.direction}::kh_holdings.direction_enum,
+            #{h.amount}, #{h.balanceAfter}, #{h.remainingVolume},
+            #{h.remainingPrice}, #{h.fee}, #{h.hashValue}, #{h.createdAt}
+            )
+        </foreach>
+    </insert>
+
+    <!-- 1분 봉 데이터 벌크 인서트 -->
+    <insert id="insertCandlesBatch">
+        INSERT INTO token_quotes (
+            token_id, candle_time, opening_price,
+            high_price, low_price, closing_price,
+            trade_volume, unit
+        ) VALUES
+        <foreach collection="list" item="c" separator=",">
+            (
+            #{c.tokenId}, #{c.candleTime},
+            #{c.openingPrice}::numeric, #{c.highPrice}::numeric,
+            #{c.lowPrice}::numeric, #{c.closingPrice}::numeric,
+            #{c.tradeVolume}::numeric, 1
+            )
+        </foreach>
+        ON CONFLICT (token_id, candle_time)
+        DO UPDATE SET
+            high_price = EXCLUDED.high_price,
+            low_price = EXCLUDED.low_price,
+            closing_price = EXCLUDED.closing_price,
+            trade_volume = EXCLUDED.trade_volume
+    </insert>
 </mapper>

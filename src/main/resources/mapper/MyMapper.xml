@@ -11,8 +11,8 @@
                 token_id,
                 closing_price
             FROM token_quotes
-            WHERE unit = '1m'::quote_unit_enum
-            ORDER BY token_id, created_at DESC
+            WHERE unit = 1
+            ORDER BY token_id, candle_time DESC
         ),
         wallet_stats AS (
             SELECT
@@ -49,8 +49,8 @@
             token_id,
             closing_price
         FROM token_quotes
-        WHERE unit = '1m'::quote_unit_enum
-        ORDER BY token_id, created_at DESC
+        WHERE unit = 1
+        ORDER BY token_id, candle_time DESC
             )
         SELECT
             t.token_name           AS tokenName,
