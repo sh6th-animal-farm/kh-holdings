@@ -120,4 +120,159 @@
         WHERE r.fail_amount > 0;
     </insert>
 
+    <select id="resultSnapshot" resultType="SnapshotDTO">
+        -- 배당 스냅샷 (반환용)
+        SELECT
+            u.user_id,
+            w.wallet_id,
+            h.token_id,
+            h.token_balance
+        FROM holdings h
+        JOIN wallets w ON h.wallet_id = w.wallet_id
+        JOIN users u ON w.user_id = u.user_id
+        --WHERE h.token_balance > 0
+        AND h.token_id = #{tokenId}
+    </select>
+
+    <insert id="insertSnapshot">
+        -- 배당 스냅샷 (저장용)
+        INSERT INTO dividend_hists (
+            token_id,
+            wallet_id,
+            cur_token_balance
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.tokenId},
+            #{item.walletId},
+            #{item.tokenBalance}
+            )
+        </foreach>
+    </insert>
+
+    <update id="resultDividend" parameterType="java.util.List">
+        <foreach collection="list" item="item" separator=";">
+            -- 배당금 입급
+            WITH updated_wallet AS (
+                UPDATE wallets
+                SET cash_balance = cash_balance + #{item.amount} -#{item.fee},
+                    updated_at = NOW()
+                WHERE wallet_id = #{item.walletId}
+                RETURNING cash_balance
+            )
+            -- 배당 내역 삽입
+            INSERT INTO transaction_hists (
+                transaction_id,
+                trade_id,
+                wallet_id,
+                transaction_type,
+                direction,
+                asset_type,
+                amount,
+                balance_after,
+                hash_value,
+                fee
+            )
+           SELECT
+                #{item.transactionId},
+                #{item.dividendId},
+                #{item.walletId},
+                'DIVIDEND'::transaction_type_enum,
+                'IN'::direction_enum,
+                'CASH'::asset_type_enum,
+                #{item.amount},
+                uw.cash_balance,
+                #{item.hashValue},
+                #{item.fee}
+            FROM
+                updated_wallet uw
+        </foreach>
+    </update>
+
+    <update id="burnTokenBatch" parameterType="java.util.List">
+        -- 토큰 소각
+        WITH updates(wallet_id, token_id, sold_volume, cash_amount, tx_id1, tx_id2, h_val1, h_val2) AS (
+            VALUES
+            <foreach collection="list" item="item" separator=",">
+                (
+                 #{item.walletId}::bigint,
+                 #{item.tokenId}::bigint,
+                #{item.amount}::numeric,
+                #{item.cashAmount}::numeric,
+                #{item.txId1}::bigint,
+                #{item.txId2}::bigint,
+                #{item.hashValue1}::text,
+                #{item.hashValue2}::text
+                )
+            </foreach>
+        ),
+        deduct_holdings AS (
+            -- 2. 토큰 잔액 차감 및 차감 전 보유량 반환
+            UPDATE holdings h
+            SET
+                token_balance = h.token_balance - u.sold_volume,
+                purchased_value = 0,
+                updated_at = now()
+            FROM
+                updates u
+            WHERE h.token_id = u.token_id
+            AND h.wallet_id = u.wallet_id
+            RETURNING h.wallet_id, h.token_id
+        ),
+        update_wallet AS (
+            -- 3. 현금 잔액 증가
+            UPDATE wallets w
+            SET
+                cash_balance = w.cash_balance + u.cash_amount,
+                updated_at = now()
+            FROM updates u
+            WHERE w.wallet_id = u.wallet_id
+            RETURNING w.wallet_id, w.cash_balance as balance_after, u.token_id as orign_token_id
+        )
+        INSERT INTO transaction_hists (
+            transaction_id,
+            wallet_id,
+            transaction_type,
+            direction,
+            amount,
+            balance_after,
+            hash_value,
+            asset_type
+        )
+        SELECT
+            v.tx_id,
+            u.wallet_id,
+            'BURN'::transaction_type_enum,
+            v.t_dir,
+            v.t_amt,
+            v.t_bal,
+            v.t_hash,
+            v.t_asset
+        FROM updates u
+        JOIN update_wallet uw ON u.wallet_id = uw.wallet_id AND u.token_id = uw.orign_token_id
+        JOIN deduct_holdings dh ON u.wallet_id = dh.wallet_id AND u.token_id = dh.token_id
+        CROSS JOIN LATERAL (
+        VALUES
+            (u.tx_id1, 'OUT'::direction_enum, u.sold_volume, 0, u.h_val1, 'TOKEN'::asset_type_enum),
+            (u.tx_id2, 'IN'::direction_enum,  u.cash_amount, uw.balance_after, u.h_val2, 'CASH'::asset_type_enum)
+        ) AS v(tx_id, t_dir, t_amt, t_bal, t_hash, t_asset)
+    </update>
+
+    <update id="deleteToken">
+        UPDATE
+            tokens
+        SET
+            deleted_at = NOW()
+        WHERE
+            token_id = #{tokenId}
+    </update>
+
+    <select id="checkTokenStatus" resultType="map">
+        -- 토큰 존재 여부 확인
+        SELECT
+            token_id,
+            deleted_at
+        FROM tokens
+        WHERE token_id = #{tokenId}
+    </select>
 </mapper>

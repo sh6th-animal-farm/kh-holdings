@@ -69,4 +69,15 @@
         ORDER BY ds.daily_trade_volume DESC NULLS LAST
     </select>
 
+    <select id="selectLatestTokenPrice">
+        SELECT
+            trade_price
+        FROM
+            token_quotes
+        WHERE
+            token_id = #{tokenId}
+        ORDER BY
+            created_at DESC
+            LIMIT 1
+    </select>
 </mapper>
