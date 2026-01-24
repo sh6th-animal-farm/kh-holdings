@@ -71,7 +71,7 @@
 
     <select id="selectLatestTokenPrice">
         SELECT
-            trade_price
+            closing_price
         FROM
             token_quotes
         WHERE

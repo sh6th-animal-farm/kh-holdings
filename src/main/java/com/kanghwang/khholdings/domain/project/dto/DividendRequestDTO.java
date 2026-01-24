@@ -13,9 +13,9 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SnapshotDTO {
-    private Long userId;				// 유저 아이디
-    private Long walletId;			    // 지갑 번호
-    private Long tokenId;		        // 토큰 번호
-    private BigDecimal totalBalance;    // 토큰 보유 수량
+public class DividendRequestDTO {
+	private Long dividendId;
+	private Long walletId;
+	private BigDecimal beforeTaxAmount; // 세전 배당금
+	private BigDecimal afterTaxAmount;  // 새후 배당금
 }

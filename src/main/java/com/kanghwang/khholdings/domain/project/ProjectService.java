@@ -5,17 +5,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import com.kanghwang.khholdings.domain.market.MarketRepository;
-import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
-import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
-import lombok.RequiredArgsConstructor;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendDTO;
+import com.kanghwang.khholdings.domain.project.dto.DividendRequestDTO;
+import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
+import com.kanghwang.khholdings.domain.project.dto.SubscriptionDTO;
+import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -60,21 +63,54 @@ public class ProjectService {
 
 	// 청약 정산 (당첨, 낙첨)
 	@Transactional
-	public boolean resultSubscription(Long transactionId, Long tokenId, Long passPrice, Long passVolume) {
+	public boolean resultSubscription(Long tokenId, List<SubscriptionRequestDTO> subRequestList) {
 
-		// 1. Snowflake ID 생성
-		Long passTxId = SnowflakeIdGenerator.nextId();
-		Long failTxId = SnowflakeIdGenerator.nextId();
+		if (subRequestList == null || subRequestList.size() == 0) {
+			return false;
+		}
 
-		// 2. 해시값 생성
-		String passHashValue = DigestUtils.sha256Hex(transactionId.toString());
-		String failHashValue = DigestUtils.sha256Hex(transactionId.toString());
+		int BATCH_SIZE = 1000;
+		List<SubscriptionDTO> batchBuffer = new ArrayList<>();
 
-		return projectRepository.resultSubscription(transactionId, tokenId, passTxId, failTxId, passPrice, passVolume,
-				passHashValue, failHashValue);
+		for (SubscriptionRequestDTO subRequestDTO : subRequestList) {
+
+			// 1. Snowflake ID 생성
+			Long passTxId = SnowflakeIdGenerator.nextId();
+			Long failTxId = SnowflakeIdGenerator.nextId();
+
+			// 2. 해시값 생성
+			String passHashValue = DigestUtils.sha256Hex(passTxId.toString());
+			String failHashValue = DigestUtils.sha256Hex(failTxId.toString());
+
+			// 3. 요청 객체 생성
+			SubscriptionDTO subscriptionDTO = SubscriptionDTO.builder()
+				.passTxId(passTxId)
+				.failTxId(failTxId)
+				.subscriptionId(subRequestDTO.getSubscriptionId())
+				.tokenId(tokenId)
+				.walletId(subRequestDTO.getWalletId())
+				.passPrice(subRequestDTO.getPassPrice())
+				.passVolume(subRequestDTO.getPassVolume())
+				.passHashValue(passHashValue)
+				.failHashValue(failHashValue)
+				.build();
+
+			batchBuffer.add(subscriptionDTO);
+
+			if (batchBuffer.size() >= BATCH_SIZE) {
+				projectRepository.resultSubscription(batchBuffer);
+				batchBuffer.clear();
+			}
+		}
+
+		if (!batchBuffer.isEmpty()) {
+			projectRepository.resultSubscription(batchBuffer);
+		}
+
+		return true;
 	}
 
-	// 배당 스앱샷
+	// 배당 스냅샷
 	@Transactional
 	public List<SnapshotDTO> resultSnapshot(Long tokenId) {
 
@@ -89,21 +125,29 @@ public class ProjectService {
 
 	// 배당 정산
 	@Transactional
-	public boolean resultDividend(List<DividendDTO> divList) {
+	public boolean resultDividend(Long tokenId, List<DividendRequestDTO> divRequestList) {
 
-		if (divList == null || divList.size() == 0) {
+		if (divRequestList == null || divRequestList.size() == 0) {
 			return false;
 		}
 
 		int BATCH_SIZE = 1000;
 		List<DividendDTO> batchBuffer = new ArrayList<>();
 
-		for (DividendDTO dividendDTO : divList) {
+		for (DividendRequestDTO dividendRequestDTO : divRequestList) {
 
 			Long transactionId = SnowflakeIdGenerator.nextId();
+			String hashValue = DigestUtils.sha256Hex(transactionId.toString());
 
-			dividendDTO.setTransactionId(transactionId);
-			dividendDTO.setHashValue(transactionId.toString() + transactionId.toString());
+			DividendDTO dividendDTO = DividendDTO.builder()
+				.transactionId(transactionId)
+				.dividendId(dividendRequestDTO.getDividendId())
+				.tokenId(tokenId)
+				.walletId(dividendRequestDTO.getWalletId())
+				.amount(dividendRequestDTO.getBeforeTaxAmount())
+				.fee(dividendRequestDTO.getBeforeTaxAmount().subtract(dividendRequestDTO.getAfterTaxAmount()))
+				.hashValue(hashValue)
+				.build();
 
 			batchBuffer.add(dividendDTO);
 
@@ -136,8 +180,8 @@ public class ProjectService {
 		}
 
 		// 1. 단가 조회
-		BigDecimal tradePrice = marketRepository.selectLatestTokenPrice(tokenId);
-		if (tradePrice == null) {
+		BigDecimal currentPrice = marketRepository.selectLatestTokenPrice(tokenId);
+		if (currentPrice == null) {
 			throw new RuntimeException("현재 시세를 찾을 수 없습니다.");
 		}
 
@@ -153,19 +197,19 @@ public class ProjectService {
 
 		for (SnapshotDTO holder : holders) {
 
-			BigDecimal tokenBalance = holder.getTokenBalance();
-			BigDecimal calcCash = tokenBalance.multiply(tradePrice);
+			BigDecimal amount = holder.getTotalBalance();          // 토큰 보유 수량
+			BigDecimal cashAmount = amount.multiply(currentPrice); // 시세를 기준으로 환전
 
 			Long txId1 = SnowflakeIdGenerator.nextId();
 			Long txId2 = SnowflakeIdGenerator.nextId();
 
 			BurnDTO burnDTO = BurnDTO.builder()
-				.walletId(holder.getWalletId())
-				.tokenId(holder.getTokenId())
 				.txId1(txId1)
 				.txId2(txId2)
-				.amount(tokenBalance)
-				.cashAmount(calcCash)
+				.tokenId(holder.getTokenId())
+				.walletId(holder.getWalletId())
+				.amount(amount)
+				.cashAmount(cashAmount)
 				.hashValue1(DigestUtils.sha256Hex(txId1.toString()))
 				.hashValue2(DigestUtils.sha256Hex(txId2.toString()))
 				.build();

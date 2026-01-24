@@ -21,7 +21,7 @@
         )
         SELECT
             #{transactionId}, #{subscriptionId}, NULL, #{walletId},
-            'SUBSCRIPTION', 'CASH', 'OUT', #{amount},
+            'SUBSCRIPTION'::transaction_type_enum, 'CASH', 'OUT', #{amount},
             uw.cash_balance, 0, 0,
             NOW(), 0, #{hashValue}
         FROM updated_wallet uw
@@ -34,7 +34,7 @@
             SELECT wallet_id, amount, trade_id
             FROM transaction_hists
             WHERE transaction_id = #{transactionId}
-              AND transaction_type = 'SUBSCRIPTION' -- 해당 내역이 청약 건인지 추가 검증
+              AND transaction_type = 'SUBSCRIPTION'::transaction_type_enum -- 해당 내역이 청약 건인지 추가 검증
         ),
         update_wallet AS (
             -- 2. 지갑 잔액 환불
@@ -60,64 +60,72 @@
     </insert>
 
     <insert id="resultSubscription">
-        /* 1. 청약 신청 정보 및 결과(당첨, 낙첨) 금액 계산 */
-        WITH result AS (
+        <foreach collection="list" item="item" separator=";">
+            -- 1. 청약 신청 정보 및 금액 계산
+            WITH result AS (
             SELECT
-                wallet_id, trade_id, amount as total_amount,
-                #{passVolume} as pass_volume,
-                (#{passPrice} * #{passVolume}) as pass_amount,
-                (amount - (#{passPrice} * #{passVolume})) as fail_amount
+                wallet_id,
+                trade_id,
+                amount as total_amount,
+                #{item.passVolume} as pass_volume,
+                (#{item.passPrice} * #{item.passVolume}) as pass_amount,
+                (amount - (#{item.passPrice} * #{item.passVolume})) as fail_amount
             FROM transaction_hists
-            WHERE transaction_id = #{transactionId}
-            AND transaction_type = 'SUBSCRIPTION'
-        ),
-        /* 2. 지갑 잔액 환불 (FAIL) */
-        update_wallet AS (
+            WHERE trade_id = #{item.subscriptionId}
+            AND wallet_id = #{item.walletId}
+            AND transaction_type = 'SUBSCRIPTION'::transaction_type_enum
+            LIMIT 1
+            ),
+            -- 2. 지갑 잔액 환불, FAIL 금액 발생 시만
+            update_wallet AS (
             UPDATE wallets w
-            SET cash_balance = w.cash_balance + r.fail_amount,
+            SET
+                cash_balance = w.cash_balance + r.fail_amount,
                 updated_at = NOW()
-                FROM result r
-            WHERE w.wallet_id = r.wallet_id AND r.fail_amount > 0
+            FROM result r
+            WHERE w.wallet_id = r.wallet_id
+                AND r.fail_amount > 0
             RETURNING w.wallet_id, w.cash_balance
-        ),
-        /* 3. 보유 토큰에 추가 (PASS) */
-        insert_holdings AS (
+            ),
+            -- 3. 토큰 보유 기록 추가, PASS 수량 발생 시만
+            insert_holdings AS (
             INSERT INTO holdings (
                 wallet_id, token_id, token_balance, reserved,
                 purchased_value, created_at
             )
             SELECT
-                r.wallet_id, #{tokenId}, r.pass_volume, 0,
+                r.wallet_id, #{item.tokenId}, r.pass_volume, 0,
                 r.pass_amount, NOW()
             FROM result r
             WHERE r.pass_volume > 0
             RETURNING wallet_id, token_balance
-        )
-        /* 4. 거래 내역 기록 (PASS / FAIL) */
-        INSERT INTO transaction_hists (
-            transaction_id, trade_id, wallet_id, transaction_type,
-            asset_type, direction, amount, balance_after,
-            remaining_price, remaining_volume, created_at, fee, hash_value
-        )
-        -- 1) 당첨 내역 (PASS)
-        SELECT
-            #{passTransactionId}, r.trade_id, r.wallet_id, 'PASS'::transaction_type_enum,
-            'TOKEN'::asset_type_enum, 'IN'::direction_enum, r.pass_volume, ih.token_balance,
-            0, 0, NOW(), 0, #{passHashValue}
-        FROM result r
-             INNER JOIN insert_holdings ih ON r.wallet_id = ih.wallet_id
-        WHERE r.pass_volume > 0
+            )
+            -- 4. 최종 거래 내역 기록
+            INSERT INTO transaction_hists (
+                transaction_id, trade_id, wallet_id, transaction_type,
+                asset_type, direction, amount, balance_after,
+                remaining_price, remaining_volume, created_at, fee, hash_value
+            )
+            -- 4.1 당첨 내역, PASS
+            SELECT
+                #{item.passTxId}, r.trade_id, r.wallet_id, 'PASS'::transaction_type_enum,
+                'TOKEN'::asset_type_enum, 'IN'::direction_enum, r.pass_volume, ih.token_balance,
+                0, 0, NOW(), 0, #{item.passHashValue}
+            FROM result r
+            INNER JOIN insert_holdings ih ON r.wallet_id = ih.wallet_id
+            WHERE r.pass_volume > 0
 
-        UNION ALL
+            UNION ALL
 
-        -- 2) 환불 내역 (FAIL)
-        SELECT
-            #{failTransactionId}, r.trade_id, r.wallet_id, 'FAIL'::transaction_type_enum,
-            'CASH'::asset_type_enum, 'IN'::direction_enum, r.fail_amount, uw.cash_balance,
-            0, 0, NOW(), 0, #{failHashValue}
-        FROM result r
-             INNER JOIN update_wallet uw ON r.wallet_id = uw.wallet_id
-        WHERE r.fail_amount > 0;
+            -- 4.2 환불 내역, FAIL
+            SELECT
+                #{item.failTxId}, r.trade_id, r.wallet_id, 'FAIL'::transaction_type_enum,
+                'CASH'::asset_type_enum, 'IN'::direction_enum, r.fail_amount, uw.cash_balance,
+                0, 0, NOW(), 0, #{item.failHashValue}
+            FROM result r
+            INNER JOIN update_wallet uw ON r.wallet_id = uw.wallet_id
+            WHERE r.fail_amount > 0
+        </foreach>
     </insert>
 
     <select id="resultSnapshot" resultType="SnapshotDTO">
@@ -126,12 +134,12 @@
             u.user_id,
             w.wallet_id,
             h.token_id,
-            h.token_balance
+            h.token_balance as total_balance
         FROM holdings h
-        JOIN wallets w ON h.wallet_id = w.wallet_id
-        JOIN users u ON w.user_id = u.user_id
-        --WHERE h.token_balance > 0
-        AND h.token_id = #{tokenId}
+            JOIN wallets w ON h.wallet_id = w.wallet_id
+            JOIN users u ON w.user_id = u.user_id
+        WHERE h.token_balance > 0
+            AND h.token_id = #{tokenId}
     </select>
 
     <insert id="insertSnapshot">
@@ -145,22 +153,22 @@
             (
             #{item.tokenId},
             #{item.walletId},
-            #{item.tokenBalance}
+            #{item.totalBalance}
             )
         </foreach>
     </insert>
 
     <update id="resultDividend" parameterType="java.util.List">
         <foreach collection="list" item="item" separator=";">
-            -- 배당금 입급
+            -- 1. 배당금 입급
             WITH updated_wallet AS (
                 UPDATE wallets
-                SET cash_balance = cash_balance + #{item.amount} -#{item.fee},
+                SET cash_balance = cash_balance + #{item.amount} - #{item.fee},
                     updated_at = NOW()
                 WHERE wallet_id = #{item.walletId}
                 RETURNING cash_balance
             )
-            -- 배당 내역 삽입
+            -- 2. 배당 내역 삽입
             INSERT INTO transaction_hists (
                 transaction_id,
                 trade_id,
@@ -185,18 +193,26 @@
                 #{item.hashValue},
                 #{item.fee}
             FROM
-                updated_wallet uw
+                updated_wallet uw;
+            -- 3. 스냅샷 테이블 업데이트
+            UPDATE dividend_hists
+            SET
+                transaction_id = #{item.transactionId},
+                dividend_amount = #{item.amount} - #{item.fee},
+                updated_at = NOW()
+            WHERE token_id = #{item.tokenId}
+            AND wallet_id = #{item.walletId}
         </foreach>
     </update>
 
     <update id="burnTokenBatch" parameterType="java.util.List">
         -- 토큰 소각
-        WITH updates(wallet_id, token_id, sold_volume, cash_amount, tx_id1, tx_id2, h_val1, h_val2) AS (
+        WITH updates(wallet_id, token_id, amount, cash_amount, tx_id1, tx_id2, h_val1, h_val2) AS (
             VALUES
             <foreach collection="list" item="item" separator=",">
                 (
-                 #{item.walletId}::bigint,
-                 #{item.tokenId}::bigint,
+                #{item.walletId}::bigint,
+                #{item.tokenId}::bigint,
                 #{item.amount}::numeric,
                 #{item.cashAmount}::numeric,
                 #{item.txId1}::bigint,
@@ -210,7 +226,8 @@
             -- 2. 토큰 잔액 차감 및 차감 전 보유량 반환
             UPDATE holdings h
             SET
-                token_balance = h.token_balance - u.sold_volume,
+                token_balance = 0,
+                reserved = 0,
                 purchased_value = 0,
                 updated_at = now()
             FROM
@@ -227,7 +244,7 @@
                 updated_at = now()
             FROM updates u
             WHERE w.wallet_id = u.wallet_id
-            RETURNING w.wallet_id, w.cash_balance as balance_after, u.token_id as orign_token_id
+            RETURNING w.wallet_id, w.cash_balance as balance_after, u.token_id
         )
         INSERT INTO transaction_hists (
             transaction_id,
@@ -249,11 +266,11 @@
             v.t_hash,
             v.t_asset
         FROM updates u
-        JOIN update_wallet uw ON u.wallet_id = uw.wallet_id AND u.token_id = uw.orign_token_id
+        JOIN update_wallet uw ON u.wallet_id = uw.wallet_id AND u.token_id = uw.token_id
         JOIN deduct_holdings dh ON u.wallet_id = dh.wallet_id AND u.token_id = dh.token_id
         CROSS JOIN LATERAL (
         VALUES
-            (u.tx_id1, 'OUT'::direction_enum, u.sold_volume, 0, u.h_val1, 'TOKEN'::asset_type_enum),
+            (u.tx_id1, 'OUT'::direction_enum, u.amount, 0, u.h_val1, 'TOKEN'::asset_type_enum),
             (u.tx_id2, 'IN'::direction_enum,  u.cash_amount, uw.balance_after, u.h_val2, 'CASH'::asset_type_enum)
         ) AS v(tx_id, t_dir, t_amt, t_bal, t_hash, t_asset)
     </update>

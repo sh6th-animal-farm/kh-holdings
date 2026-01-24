@@ -12,8 +12,9 @@ import lombok.*;
 public class DividendDTO {
 	private Long transactionId;
 	private Long dividendId;
+	private Long tokenId;
 	private Long walletId;
-	private BigDecimal amount;
-	private BigDecimal fee;
+	private BigDecimal amount; // 세전 배당금
+	private BigDecimal fee;    // 세후 배당금 - 세전 배당금
 	private String hashValue;
 }
