@@ -2,7 +2,7 @@ name: Java CI/CD with Gradle
 
 on:
   push:
-    branches: [ "develop", "feat/cicd" ] # main 브랜치에 push될 때 실행
+    branches: [ "develop", "feat/cicd" ] # main 브랜치와 feat/cicd에 push될 때 실행
 
 jobs:
   build:
