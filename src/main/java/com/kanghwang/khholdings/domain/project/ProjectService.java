@@ -3,6 +3,7 @@ package com.kanghwang.khholdings.domain.project;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.kanghwang.khholdings.domain.market.MarketRepository;
 import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
@@ -74,25 +75,65 @@ public class ProjectService {
 	}
 
 	// 배당 스앱샷
+	@Transactional
 	public List<SnapshotDTO> resultSnapshot(Long tokenId) {
-		return projectRepository.resultSnapshot(tokenId);
+
+		List<SnapshotDTO> list = projectRepository.resultSnapshot(tokenId);
+
+		if (list != null && !list.isEmpty()) {
+			projectRepository.insertSnapshot(list);
+		}
+
+		return list;
 	}
 
 	// 배당 정산
 	@Transactional
-	public boolean resultDividend(DividendDTO dividendDTO) {
+	public boolean resultDividend(List<DividendDTO> divList) {
 
-		Long transactionId = SnowflakeIdGenerator.nextId();
+		if (divList == null || divList.size() == 0) {
+			return false;
+		}
 
-		dividendDTO.setTransactionId(transactionId);
-		dividendDTO.setHashValue(transactionId.toString() + transactionId.toString());
+		int BATCH_SIZE = 1000;
+		List<DividendDTO> batchBuffer = new ArrayList<>();
 
-		return projectRepository.resultDividend(dividendDTO);
+		for (DividendDTO dividendDTO : divList) {
+
+			Long transactionId = SnowflakeIdGenerator.nextId();
+
+			dividendDTO.setTransactionId(transactionId);
+			dividendDTO.setHashValue(transactionId.toString() + transactionId.toString());
+
+			batchBuffer.add(dividendDTO);
+
+			if (batchBuffer.size() >= BATCH_SIZE) {
+				projectRepository.resultDividend(batchBuffer);
+				batchBuffer.clear();
+			}
+		}
+
+		if (!batchBuffer.isEmpty()) {
+			projectRepository.resultDividend(batchBuffer);
+		}
+
+		return true;
 	}
 
 	// 토큰 소각
 	@Transactional
 	public boolean burnToken(Long tokenId) {
+
+		// 토큰 존재 여부 확인
+		Map<String, Object> tokenStatus = projectRepository.checkTokenStatus(tokenId);
+
+		if (tokenStatus == null) {
+			throw new RuntimeException("존재하지 않는 토큰입니다.");
+		}
+
+		if (tokenStatus.get("deleted_at") != null) {
+			throw new RuntimeException("이미 소각 처리된 토큰입니다.");
+		}
 
 		// 1. 단가 조회
 		BigDecimal tradePrice = marketRepository.selectLatestTokenPrice(tokenId);

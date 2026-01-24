@@ -14,5 +14,6 @@ public class DividendDTO {
 	private Long dividendId;
 	private Long walletId;
 	private BigDecimal amount;
+	private BigDecimal fee;
 	private String hashValue;
 }

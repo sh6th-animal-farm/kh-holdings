@@ -121,52 +121,72 @@
     </insert>
 
     <select id="resultSnapshot" resultType="SnapshotDTO">
-        -- 배당 스냅샷
+        -- 배당 스냅샷 (반환용)
         SELECT
             u.user_id,
             w.wallet_id,
             h.token_id,
             h.token_balance
         FROM holdings h
-            JOIN wallets w ON h.wallet_id = w.wallet_id
-            JOIN users u ON w.user_id = u.user_id
+        JOIN wallets w ON h.wallet_id = w.wallet_id
+        JOIN users u ON w.user_id = u.user_id
         --WHERE h.token_balance > 0
         AND h.token_id = #{tokenId}
     </select>
 
-    <update id="resultDividend" parameterType="DividendDTO">
-        -- 배당금 입급
-        WITH updated_wallet AS (
-            UPDATE wallets
-            SET cash_balance = cash_balance + #{amount},
-                updated_at = NOW()
-            WHERE wallet_id = #{walletId}
-            RETURNING cash_balance
-        )
-        -- 배당 내역 삽입
-        INSERT INTO transaction_hists (
-            transaction_id,
-            trade_id,
+    <insert id="insertSnapshot">
+        -- 배당 스냅샷 (저장용)
+        INSERT INTO dividend_hists (
+            token_id,
             wallet_id,
-            transaction_type,
-            direction,
-            asset_type,
-            amount,
-            balance_after,
-            hash_value
-        )
-       SELECT
-            #{transactionId},
-            #{dividendId},
-            #{walletId},
-            'DIVIDEND'::transaction_type_enum,
-            'IN'::direction_enum,
-            'CASH'::asset_type_enum,
-            #{amount},
-            uw.cash_balance,
-            #{hashValue}
-        FROM
-            updated_wallet uw
+            cur_token_balance
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.tokenId},
+            #{item.walletId},
+            #{item.tokenBalance}
+            )
+        </foreach>
+    </insert>
+
+    <update id="resultDividend" parameterType="java.util.List">
+        <foreach collection="list" item="item" separator=";">
+            -- 배당금 입급
+            WITH updated_wallet AS (
+                UPDATE wallets
+                SET cash_balance = cash_balance + #{item.amount} -#{item.fee},
+                    updated_at = NOW()
+                WHERE wallet_id = #{item.walletId}
+                RETURNING cash_balance
+            )
+            -- 배당 내역 삽입
+            INSERT INTO transaction_hists (
+                transaction_id,
+                trade_id,
+                wallet_id,
+                transaction_type,
+                direction,
+                asset_type,
+                amount,
+                balance_after,
+                hash_value,
+                fee
+            )
+           SELECT
+                #{item.transactionId},
+                #{item.dividendId},
+                #{item.walletId},
+                'DIVIDEND'::transaction_type_enum,
+                'IN'::direction_enum,
+                'CASH'::asset_type_enum,
+                #{item.amount},
+                uw.cash_balance,
+                #{item.hashValue},
+                #{item.fee}
+            FROM
+                updated_wallet uw
+        </foreach>
     </update>
 
     <update id="burnTokenBatch" parameterType="java.util.List">
@@ -246,4 +266,13 @@
         WHERE
             token_id = #{tokenId}
     </update>
+
+    <select id="checkTokenStatus" resultType="map">
+        -- 토큰 존재 여부 확인
+        SELECT
+            token_id,
+            deleted_at
+        FROM tokens
+        WHERE token_id = #{tokenId}
+    </select>
 </mapper>

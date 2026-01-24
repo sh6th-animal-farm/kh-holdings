@@ -83,9 +83,9 @@
 
  	// 배당 정산
  	@PostMapping("/dividend/after/{walletId}")
- 	public ResponseEntity<?> resultDividend(@ModelAttribute DividendDTO dividendDTO) {
+ 	public ResponseEntity<?> resultDividend(@RequestBody List<DividendDTO> divList) {
 
- 		boolean isCompleted = projectService.resultDividend(dividendDTO);
+ 		boolean isCompleted = projectService.resultDividend(divList);
 
  		if (isCompleted) {
  			return ResponseEntity.ok("배당 정산이 완료되었습니다.");
