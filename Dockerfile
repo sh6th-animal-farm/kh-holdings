@@ -12,11 +12,11 @@ FROM eclipse-temurin:17-jre-alpine
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 빌드 결과물 복사 (build/libs 폴더의 war 파일)
-COPY --from=build /app/build/libs/*.jar app.war
+# 빌드 결과물 복사 (build/libs 폴더의 jar 파일)
+COPY --from=build /app/build/libs/*-SNAPSHOT.jar app.jar
 
 # 실행 권한 부여 및 포트 설정
 EXPOSE 8080
 
 # 애플리케이션 실행
-ENTRYPOINT ["java", "-jar", "app.war"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
