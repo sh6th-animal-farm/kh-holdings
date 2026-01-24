@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
-import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
 import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
+import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 
 @RestController
@@ -48,8 +48,8 @@ public class MyController {
 
 	// 나의 거래 내역 조회(필터 조회, 기간 조회, 페이징)
 	@GetMapping("/transaction")
-	public ResponseEntity<ApiResponse<List<TransactionHistDTO>>> selectTxHistByWalletId(@ModelAttribute TxHistsSearchDTO searchDTO){
-		List<TransactionHistDTO> list = myService.selectTxHistByWalletId(searchDTO);
+	public ResponseEntity<ApiResponse<List<TransactionRequestDTO>>> selectTxHistByWalletId(@ModelAttribute TxHistsSearchDTO searchDTO){
+		List<TransactionRequestDTO> list = myService.selectTxHistByWalletId(searchDTO);
 
 		if (list == null || list.isEmpty()) {
 			return ResponseEntity.badRequest().body(ApiResponse.error("거래 내역 조회에 실패했습니다."));
