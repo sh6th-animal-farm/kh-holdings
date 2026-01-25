@@ -39,6 +39,10 @@ public class TradeWorker implements CommandLineRunner {
     private final OrderRepository orderRepository;
     private volatile boolean isRunning = true;
     private final CountDownLatch shutdownLatch = new CountDownLatch(1); // 종료 확인을 위한 래치 (1개의 스레드가 끝날 때까지 대기)
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
 
     // 체결 내역 벌크 인서트를 위한 버퍼
     private final Queue<TransactionHistDTO> tradeBuffer = new ConcurrentLinkedQueue<>();
@@ -85,11 +89,6 @@ public class TradeWorker implements CommandLineRunner {
     }
 
     private void processStream() {
-
-        // Jackson이 OffsetDateTime을 읽을 있도록 JavaTimeModule 등록
-        ObjectMapper objectMapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule()) // Java 8 날짜 타입 지원 추가
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
         RStream<String, Object> stream = redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper));
         StreamMessageId lastId = StreamMessageId.ALL; // 처음부터 혹은 최신부터 읽기 설정 가능
@@ -183,6 +182,31 @@ public class TradeWorker implements CommandLineRunner {
                 List.of(candleKey),
                 trade.getTargetPrice().toPlainString(),
                 trade.getExecutedVolume().toPlainString());
+
+        // 업데이트된 최신 캔들 정보를 읽어서 전파
+        // 추후에 트레이딩뷰 차트를 실시간으로 움직이게 함
+        Map<String, String> candleMap = redissonClient
+                .<String, String>getMap(candleKey, org.redisson.client.codec.StringCodec.INSTANCE)
+                .readAllMap();
+
+        if (candleMap != null && !candleMap.isEmpty()) {
+            String topicKey = "candle:topic:" + trade.getTokenId();
+
+            // 시간은 프론트엔드에서 한국 시간으로 변경 예정
+            CandleDTO liveCandle = CandleDTO.builder()
+                    .tokenId(trade.getTokenId())
+                    .unit(1)
+                    .candleTime(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(minute), ZoneOffset.UTC))
+                    .openingPrice(new BigDecimal(candleMap.get("open")))
+                    .highPrice(new BigDecimal(candleMap.get("high")))
+                    .lowPrice(new BigDecimal(candleMap.get("low")))
+                    .closingPrice(new BigDecimal(candleMap.get("close")))
+                    .tradeVolume(new BigDecimal(candleMap.get("vol")))
+                    .build();
+
+            // DTO 자체를 Redis Topic으로 발행 (MarketWorker가 받음)
+            redissonClient.getTopic(topicKey, new JsonJacksonCodec(objectMapper)).publish(liveCandle);
+        }
     }
 
     // 매 분 5초에 실행
