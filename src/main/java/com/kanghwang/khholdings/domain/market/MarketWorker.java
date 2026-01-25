@@ -50,7 +50,7 @@ public class MarketWorker {
 		});
 
 		// [주문/호가]
-		RPatternTopic orderTopic = redissonClient.getPatternTopic("order:topic:*", new JsonJacksonCodec(objectMapper));
+		RPatternTopic orderTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "order:topic:*", new JsonJacksonCodec(objectMapper));
 
 		orderTopic.addListener(RealTimeEvent.class, (pattern, channel, event) -> {
 
@@ -82,6 +82,8 @@ public class MarketWorker {
 			String tokenId = parts[parts.length - 1];
 
 			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, msg);
+
+			System.out.println("[MarketWorker] WebSocket : OHLCV 및 차트 업데이트 " + msg);
 		});
 	}
 }

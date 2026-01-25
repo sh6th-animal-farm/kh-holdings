@@ -108,7 +108,8 @@ public class TradeWorker implements CommandLineRunner {
 
                 for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
                     StreamMessageId currentId = entry.getKey(); // 현재 처리 중인 메시지의 ID
-                    Object data = entry.getValue().get("data");
+                    Object data = entry.getValue().get("" +
+                            "data");
                     try {
                         // [1] 데이터 처리 로직
                         if (data instanceof TransactionRequestDTO) {
@@ -207,6 +208,7 @@ public class TradeWorker implements CommandLineRunner {
                     .tradeVolume(new BigDecimal(candleMap.get("vol")))
                     .build();
 
+            // [MarketWoker - 차트]
             // DTO 자체를 Redis Topic으로 발행 (MarketWorker가 받음)
             redissonClient.getTopic(topicKey, new JsonJacksonCodec(objectMapper)).publish(liveCandle);
         }
