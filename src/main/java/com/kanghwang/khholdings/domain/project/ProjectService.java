@@ -13,6 +13,7 @@ import com.kanghwang.khholdings.domain.market.MarketRepository;
 import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendRequestDTO;
+import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
 import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
@@ -234,5 +235,10 @@ public class ProjectService {
 		projectRepository.deleteToken(tokenId);
 
 		return true;
+	}
+
+	// 토큰 발행
+	public boolean openToken(OpenDTO openDTO){
+		return projectRepository.openToken(openDTO) > 0;
 	}
 }

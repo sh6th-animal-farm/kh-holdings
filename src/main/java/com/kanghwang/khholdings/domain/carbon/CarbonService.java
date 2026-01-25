@@ -1,11 +1,13 @@
 package com.kanghwang.khholdings.domain.carbon;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.carbon.dto.HoldingRequestDTO;
+import com.kanghwang.khholdings.domain.carbon.type.UserClass;
 
 @Service
 public class CarbonService {
@@ -13,14 +15,17 @@ public class CarbonService {
 	@Autowired
 	private CarbonRepository carbonRepository;
 
-	// 해당 토큰에 대한 보유량 및 모든 기업 보유량 조회(기업용)
 	public List<HoldingRequestDTO> selectTokenIdByWalletId(Long walletId) {
 
-		// 지갑 유무 조회
-		if (!carbonRepository.existsByWalletId(walletId)) {
-			return null;
+		// 1. 기업 권한 체크
+		UserClass userClass = carbonRepository.getUserClass(walletId);
+
+		if (userClass != UserClass.ENTERPRISE) {
+			// 기업이 아니면 빈 리스트 반환
+			return Collections.emptyList();
 		}
 
+		// 2. 기업일 때만 조회
 		return carbonRepository.selectTokenIdByWalletId(walletId);
 	}
 }
