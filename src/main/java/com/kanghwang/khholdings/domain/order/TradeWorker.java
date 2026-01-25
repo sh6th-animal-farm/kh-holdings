@@ -5,14 +5,20 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
-import org.redisson.api.*;
+import org.redisson.api.BatchResult;
+import org.redisson.api.RBatch;
+import org.redisson.api.RScript;
+import org.redisson.api.RStream;
+import org.redisson.api.RedissonClient;
+import org.redisson.api.StreamMessageId;
 import org.redisson.api.stream.StreamReadArgs;
 import org.redisson.codec.JsonJacksonCodec;
 import org.springframework.boot.CommandLineRunner;
@@ -22,6 +28,8 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
@@ -45,7 +53,7 @@ public class TradeWorker implements CommandLineRunner {
 
 
     // 체결 내역 벌크 인서트를 위한 버퍼
-    private final Queue<TransactionHistDTO> tradeBuffer = new ConcurrentLinkedQueue<>();
+    private final Queue<TransactionHistDTO> transactionBuffer = new ConcurrentLinkedQueue<>();
 
     // 1분 봉 업데이트 용 Lua Script
     private static final String luaScript = """
@@ -101,8 +109,9 @@ public class TradeWorker implements CommandLineRunner {
                         StreamReadArgs.greaterThan(lastId).count(10).timeout(Duration.ofSeconds(1)));
 
                 // 데이터가 없으면 건너뛰기
-                if (messages.isEmpty())
+                if (messages.isEmpty()) {
                     continue;
+                }
 
                 for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
                     StreamMessageId currentId = entry.getKey(); // 현재 처리 중인 메시지의 ID
@@ -126,8 +135,6 @@ public class TradeWorker implements CommandLineRunner {
                         // [3] 다음 읽기 지점을 현재 메시지 이후로 업데이트
                         lastId = currentId;
 
-                        // stream.remove(lastId); // Redis에서 정산 완료한 데이터 제거
-                        // lastId = entry.getKey(); // 이후 lastId보다 큰 데이터들을 읽어오기 위해 업데이트
                     } catch (Exception e) {
                         log.error("[TradeWorker] 정산 처리 중 오류 발생: ", e);
                     }
@@ -146,24 +153,24 @@ public class TradeWorker implements CommandLineRunner {
     }
 
     // [체결]
-    private void handleTransaction(TransactionRequestDTO requestDTO) {
+    private void handleTransaction(TransactionRequestDTO trade) {
 
         try {
             // 1. [DB] 정산 후 생성된 OUTPUT을 SettlementResultDTO에 담음
             SettlementResultDTO result = new SettlementResultDTO();
-            orderRepository.p_process_transaction_settlement(requestDTO, result);
+            orderRepository.p_process_transaction_settlement(trade, result);
 
             // 2. [DB] DB 기록 용 1분 봉 제작
-            updateRedisCandle(requestDTO);
+            updateRedisCandle(trade);
 
-            // 3. [비동기 기록] 로그 생성 및 버퍼 추가
-            enqueueLogs(requestDTO, result);
+            // 3. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
+            enqueueTransactionLogs(trade, result);
 
-            log.info("[TradeWorker] 체결 정산 완료: TradeID {}", requestDTO.getTradeId());
+            log.info("[TradeWorker] 체결 정산 완료: TradeID {}", trade.getTradeId());
 
         } catch (Exception e) {
 
-            log.error("[TradeWorker] 체결 및 정산 실패: TradeID {}", requestDTO.getTradeId(), e);
+            log.error("[TradeWorker] 체결 및 정산 실패: TradeID {}", trade.getTradeId(), e);
 
         }
     }
@@ -278,34 +285,34 @@ public class TradeWorker implements CommandLineRunner {
     // [DB] 체결 내역 생성
     // TransactionRequestDTO 누가 누구랑 얼마에 체결됐는가?
     // SettlementResultDTO 정산 후 잔액이 얼마가 되었는가?
-    private void enqueueLogs(TransactionRequestDTO t, SettlementResultDTO r) {
+    private void enqueueTransactionLogs(TransactionRequestDTO t, SettlementResultDTO r) {
         BigDecimal execAmount = t.getTargetPrice().multiply(t.getExecutedVolume());
 
         // 매수자 로그 (CASH OUT, TOKEN IN)
-        tradeBuffer.add(buildLog(t.getTxId1(), t.getTradeId(), t.getBuyOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId1(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "CASH", "OUT",
                 execAmount, r.getBuyCashAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
 
-        tradeBuffer.add(buildLog(t.getTxId2(), t.getTradeId(), t.getBuyOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId2(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "TOKEN", "IN",
                 t.getExecutedVolume(), r.getBuyTokenAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), t.getFeeRate().multiply(t.getExecutedVolume()), t.getCreatedAt()));
 
         // 매도자 로그 (CASH IN, TOKEN OUT)
-        tradeBuffer.add(buildLog(t.getTxId3(), t.getTradeId(), t.getSellOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId3(), t.getTradeId(), t.getSellOrderId(),
                 t.getSellWalletId(), "CASH", "IN",
                 execAmount, r.getSellCashAfter(), r.getSellRemToken(),
                 r.getSellRemCash(),t.getFeeRate().multiply(execAmount), t.getCreatedAt()));
 
-        tradeBuffer.add(buildLog(t.getTxId4(), t.getTradeId(), t.getSellOrderId(),
-                t.getSellWalletId(), "TOKEN", "OUT", t.getExecutedVolume(),
-                r.getSellTokenAfter(), r.getSellRemToken(), r.getSellRemCash(),
-                BigDecimal.ZERO, t.getCreatedAt()));
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId4(), t.getTradeId(), t.getSellOrderId(),
+                t.getSellWalletId(), "TOKEN", "OUT",
+                t.getExecutedVolume(), r.getSellTokenAfter(), r.getSellRemToken(),
+                r.getSellRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
     }
 
     // 체결 내역 생성을 위한 builder
-    private TransactionHistDTO buildLog(Long txId, Long tradeId, Long orderId, Long walletId, String asset,
+    private TransactionHistDTO buildTrnasactionLog(Long txId, Long tradeId, Long orderId, Long walletId, String asset,
             String dir, BigDecimal amt, BigDecimal bal, BigDecimal remVol, BigDecimal remPrice, BigDecimal fee,
             OffsetDateTime time) {
         return TransactionHistDTO.builder()
@@ -321,18 +328,20 @@ public class TradeWorker implements CommandLineRunner {
     @Scheduled(fixedDelay = 1000)
     public void periodFlush() {
 
-        if (tradeBuffer.isEmpty()) {
+        if (transactionBuffer.isEmpty()) {
             return;
         }
 
-        List<TransactionHistDTO> tradeToSave = new ArrayList<>();
-        while (!tradeBuffer.isEmpty() && tradeToSave.size() < 1000) {
-            tradeToSave.add(tradeBuffer.poll());
+        List<TransactionHistDTO> transactionToSave = new ArrayList<>();
+        while (!transactionBuffer.isEmpty() && transactionToSave.size() < 1000) {
+            // 버퍼에서 처리할 체결 내역 로그를 하나씩 꺼내옴 (최대 1000개)
+            transactionToSave.add(transactionBuffer.poll());
         }
 
-        if (!tradeToSave.isEmpty()) {
-            orderRepository.bulkInsertTradeHistory(tradeToSave);
-            log.info("[DB] {}건의 체결 내역 저장 완료", tradeToSave.size());
+        if (!transactionToSave.isEmpty()) {
+            // 처리할 체결 내역들을 한 번에 처리
+            orderRepository.bulkInsertTrasactionHists(transactionToSave);
+            log.info("[DB] {}건의 체결 내역 저장 완료", transactionToSave.size());
         }
     }
 
