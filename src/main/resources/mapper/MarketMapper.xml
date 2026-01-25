@@ -80,4 +80,25 @@
             created_at DESC
             LIMIT 1
     </select>
+
+    <!-- 차트 조회 -->
+    <select id="selectCandles" resultType="CandleDTO">
+        SELECT
+            token_id,
+            (EXTRACT(EPOCH FROM candle_time))::BIGINT AS candleTime,
+            opening_price,
+            high_price ,
+            low_price,
+            closing_price,
+            trade_volume
+        FROM
+            token_quotes
+        WHERE
+            token_id = #{tokenId}
+        AND
+            unit = 1
+        ORDER BY
+            candle_time
+        LIMIT #{limit}
+    </select>
 </mapper>

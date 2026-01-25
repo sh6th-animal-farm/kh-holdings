@@ -5,6 +5,14 @@
 
 <mapper namespace="com.kanghwang.khholdings.domain.carbon.CarbonRepository">
 
+    <select id="existsByWalletId">
+        SELECT
+            COUNT(*)
+        FROM
+            wallets
+        WHERE wallet_id = #{walletId}
+    </select>
+
     <select id="selectTokenIdByWalletId" resultType="HoldingRequestDTO">
         SELECT
             h.token_id,

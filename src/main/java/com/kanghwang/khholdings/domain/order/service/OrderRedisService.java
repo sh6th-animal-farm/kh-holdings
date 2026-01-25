@@ -34,12 +34,13 @@ import lombok.extern.slf4j.Slf4j;
 public class OrderRedisService {
 
 	// Jackson이 OffsetDateTime을 읽을 있도록 JavaTimeModule 등록
-	ObjectMapper objectMapper = new ObjectMapper()
+	private final ObjectMapper objectMapper = new ObjectMapper()
 		.registerModule(new JavaTimeModule()) // Java 8 날짜 타입 지원 추가
 		.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
 	private final RedissonClient redissonClient;
+	private final RedisKeyManager redisKeyManager;
 	private static final BigDecimal F_RATE = new BigDecimal("0.0006"); // 수수료 관리
 
 	public void processOrder(OrderRequestDTO myOrderDTO) {
@@ -72,9 +73,9 @@ public class OrderRedisService {
 		OrderSide mySide = myOrderDTO.getOrderSide();
 		OrderSide counterSide = (myOrderDTO.getOrderSide() == OrderSide.BUY) ? OrderSide.SELL : OrderSide.BUY;
 
-		String myOrderBookKey = RedisKeyManager.getOrderBookKey(myOrderDTO.getTokenId(), mySide);
-		String counterOrderBookKey = RedisKeyManager.getOrderBookKey(myOrderDTO.getTokenId(), counterSide);
-		String orderInfoKey = RedisKeyManager.getOrderInfoKey(myOrderDTO.getTokenId());
+		String myOrderBookKey = redisKeyManager.getOrderBookKey(myOrderDTO.getTokenId(), mySide);
+		String counterOrderBookKey = redisKeyManager.getOrderBookKey(myOrderDTO.getTokenId(), counterSide);
+		String orderInfoKey = redisKeyManager.getOrderInfoKey(myOrderDTO.getTokenId());
 
 		RScoredSortedSet<Long> myOrderBook = redissonClient.getScoredSortedSet(myOrderBookKey, new JsonJacksonCodec(objectMapper)); // 매수(매도) 호가창 ('가격':'주문번호')
 		RScoredSortedSet<Long> counterOrderBook = redissonClient.getScoredSortedSet(counterOrderBookKey, new JsonJacksonCodec(objectMapper)); // 매도(매수) 호가창 ('가격':'주문번호')
@@ -320,8 +321,8 @@ public class OrderRedisService {
 
 	// 호가창 및 주문 상세에서 주문 제거
 	public void removeOrder(Long tokenId, OrderSide side, Long orderId) {
-		String bookKey = RedisKeyManager.getOrderBookKey(tokenId, side);
-		String infoKey = RedisKeyManager.getOrderInfoKey(tokenId);
+		String bookKey = redisKeyManager.getOrderBookKey(tokenId, side);
+		String infoKey = redisKeyManager.getOrderInfoKey(tokenId);
 
 		// Redisson을 통한 삭제
 		redissonClient.getScoredSortedSet(bookKey).remove(orderId); // 호가창에서 삭제
@@ -334,7 +335,7 @@ public class OrderRedisService {
 
 	// 주문 취소 (사용자가 직접)
 	public boolean cancelOrder(Long tokenId, Long orderId){
-		String orderInfoKey = RedisKeyManager.getOrderInfoKey(tokenId);
+		String orderInfoKey = redisKeyManager.getOrderInfoKey(tokenId);
 		RMap<Long, OrderRequestDTO> infoMap = redissonClient.getMap(orderInfoKey);
 
 		// 1. 주문 정보 확인 (이미 취소되었거나 없을 경우)
