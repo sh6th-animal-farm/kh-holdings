@@ -134,11 +134,11 @@
             u.user_id,
             w.wallet_id,
             h.token_id,
-            h.token_balance + h.reserved as total_balance
+            h.token_balance as total_balance
         FROM holdings h
             JOIN wallets w ON h.wallet_id = w.wallet_id
             JOIN users u ON w.user_id = u.user_id
-        WHERE h.token_balance + h.reserved > 0
+        WHERE h.token_balance > 0
             AND h.token_id = #{tokenId}
     </select>
 
