@@ -69,6 +69,23 @@
         ORDER BY ds.daily_trade_volume DESC NULLS LAST
     </select>
 
+    <select id="selectPending" resultType="PendingDTO">
+        SELECT
+            order_id,
+            order_side,
+            order_price,
+            order_volume,
+            remaining_token,
+            created_at
+        FROM orders
+        WHERE wallet_id = #{walletId}
+          AND token_id = #{tokenId}
+          AND order_type = 'LIMIT'::order_type_enum
+          AND remaining_token > 0
+          AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+        ORDER BY created_at DESC
+    </select>
+
     <select id="selectLatestTokenPrice">
         SELECT
             closing_price
