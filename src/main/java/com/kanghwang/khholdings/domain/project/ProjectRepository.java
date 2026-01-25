@@ -39,7 +39,7 @@ public interface ProjectRepository {
 	// 토큰 삭제
 	void deleteToken(Long tokenId);
 
-	// 토큰 발생
+	// 토큰 발행
 	int openToken(OpenDTO openDTO);
 
 	// 토큰 존재 여부 확인
