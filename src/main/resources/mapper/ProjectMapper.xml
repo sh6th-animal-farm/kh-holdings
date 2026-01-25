@@ -25,7 +25,7 @@
             uw.cash_balance, 0, 0,
             NOW(), 0, #{hashValue}
         FROM updated_wallet uw
-            RETURNING transaction_id
+        RETURNING transaction_id
     </select>
 
     <insert id="cancelSubscription">
