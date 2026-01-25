@@ -13,6 +13,7 @@
  import org.springframework.web.bind.annotation.RestController;
 
  import com.kanghwang.khholdings.domain.project.dto.DividendRequestDTO;
+ import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
  import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
  import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
  import com.kanghwang.khholdings.global.dto.ApiResponse;
@@ -103,4 +104,16 @@
  			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 소각에 실패했습니다."));
  		}
  	}
+
+	 // 토큰 발행
+	 @PostMapping("/open")
+	 public ResponseEntity<ApiResponse<Void>> openToken(@RequestBody OpenDTO openDTO) {
+
+		 boolean result = projectService.openToken(openDTO);
+
+		 if (!result) {
+			 return ResponseEntity.badRequest().body(ApiResponse.error("토큰 발행에 실패했습니다."));
+		 }
+		 return ResponseEntity.ok(ApiResponse.error("토큰 발행이 완료되었습니다."));
+	 }
  }

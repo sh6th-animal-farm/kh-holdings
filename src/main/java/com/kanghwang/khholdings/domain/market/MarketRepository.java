@@ -6,13 +6,19 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 
 import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 
 @Mapper
 public interface MarketRepository {
 
+	// 종목 전체 조회
 	List<MarketDTO> selectAll();
 
+	// 종목 검색어 조회
 	List<MarketDTO> selectBySearch(String content);
+
+	// 미체결 내역 조회
+	List<PendingDTO> selectPending(Long tokenId, Long walletId);
 
 	// 특정 토큰 현재가 조회
 	BigDecimal selectLatestTokenPrice(Long tokenId);
