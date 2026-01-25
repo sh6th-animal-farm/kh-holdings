@@ -6,22 +6,22 @@ import org.springframework.stereotype.Component;
 public class SnowflakeIdGenerator {
 
     // 1. 기준 시간 (바꾸지 마세요. 유지해야 과거 ID와 정렬이 맞습니다)
-    private static final long epoch = 1767193200000L; // 2026-01-01
+    private final long epoch = 1767193200000L; // 2026-01-01
 
     // 2. 비트 할당 (표준 규격)
-    private static final long sequenceBits = 12L;   // 1ms당 4096개 생성 가능
-    private static final long workerIdBits = 5L;     // 서버 식별 (서버 1대라도 자리 비워둠)
+    private final long sequenceBits = 12L;   // 1ms당 4096개 생성 가능
+    private final long workerIdBits = 5L;     // 서버 식별 (서버 1대라도 자리 비워둠)
 
     // 3. 밀기 연산 (이 숫자들이 시간 데이터를 결정합니다)
-    private static final long workerIdShift = sequenceBits; // 12칸
-    private static final long timestampLeftShift = sequenceBits + workerIdBits; // 17칸
-    private static final long sequenceMask = -1L ^ (-1L << sequenceBits); // 4095
+    private final long workerIdShift = sequenceBits; // 12칸
+    private final long timestampLeftShift = sequenceBits + workerIdBits; // 17칸
+    private final long sequenceMask = -1L ^ (-1L << sequenceBits); // 4095
 
-    private static long lastTimestamp = -1L;
-    private static long sequence = 0L;
-    private static final long workerId = 0L; // 현재 서버 1대이므로 0 고정
+    private long lastTimestamp = -1L;
+    private long sequence = 0L;
+    private final long workerId = 0L; // 현재 서버 1대이므로 0 고정
 
-    public static synchronized long nextId() {
+    public synchronized long nextId() {
         long timestamp = timeGen();
 
         if (timestamp < lastTimestamp) {
@@ -49,7 +49,7 @@ public class SnowflakeIdGenerator {
             sequence;
     }
 
-    protected static Long tilNextMillis(Long lastTimestamp) {
+    protected Long tilNextMillis(Long lastTimestamp) {
         Long timestamp = timeGen();
         while (timestamp <= lastTimestamp) {
             timestamp = timeGen();
@@ -57,7 +57,7 @@ public class SnowflakeIdGenerator {
         return timestamp;
     }
 
-    protected static Long timeGen() {
+    protected Long timeGen() {
         return System.currentTimeMillis();
     }
 }

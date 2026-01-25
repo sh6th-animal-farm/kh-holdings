@@ -33,4 +33,7 @@ public class TransactionRequestDTO implements Serializable {
 	private BigDecimal feeRate;
 	private OffsetDateTime createdAt; 		// 체결 시각
 	private OrderSide takerSide;       		// 체결을 유발한 쪽 (=나, BUY or SELL)
+	private Long tokenId;      				// 어떤 종목인지 식별
+	private Long buyWalletId;  				// 매수자 지갑 (체결 목록 저장 dto에 전달 위함)
+	private Long sellWalletId; 				// 매도자 지갑 (체결 목록 저장 dto에 전달 위함)
 }
