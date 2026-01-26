@@ -12,6 +12,7 @@ import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
 import org.springframework.stereotype.Service;
 
+import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
@@ -340,8 +341,9 @@ public class OrderRedisService {
 			action = "DELETE";
 		}
 
-		// 3. 로그 출력
-		log.info("[WebSocket 호가] {} {}, Price: {}, Volume: {} ({})", side, tokenId, price, updatedVolume, action);
+		// 3. 웹소켓 전송을 위한 토픽 발행
+		OrderbookDTO orderbookDTO = new OrderbookDTO(price, updatedVolume, side, action);
+		redissonClient.getTopic(orderbookAggrKey).publish(orderbookDTO);
 	}
 
 	// 호가창 및 주문 상세에서 주문 제거

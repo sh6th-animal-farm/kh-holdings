@@ -41,11 +41,13 @@ public class MarketWorker {
 		});
 
 		// [주문/호가]
-		RPatternTopic orderTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "order:topic:*");
+		RPatternTopic orderTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "orderbook:aggr:*:*");
 
 		orderTopic.addListener(OrderbookDTO.class, (pattern, channel, event) -> {
-
-			String tokenId = channel.toString().split(":")[2];
+			// channel 형태: "kh:orderbook:aggr:777:buy"
+			String[] parts = channel.toString().split(":");
+			String tokenId = parts[parts.length - 2];
+			String side = parts[parts.length - 1];
 
 			messagingTemplate.convertAndSend("/topic/orders/" + tokenId, event);
 
