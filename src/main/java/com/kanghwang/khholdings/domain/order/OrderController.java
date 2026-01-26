@@ -23,13 +23,13 @@ public class OrderController {
 
 	// 해당 토큰 보유 수량 조회
 	@GetMapping("/balance/{walletId}/{tokenId}")
-	public BigDecimal selectHoldingTokenBalance(@PathVariable Long walletId,@PathVariable Long tokenId){
+	public BigDecimal selectHoldingTokenBalance(@PathVariable Long walletId, @PathVariable Long tokenId) {
 		return orderService.selectHoldingTokenBalance(walletId, tokenId);
 	}
 
 	// 주문 가능 금액 조회
 	@GetMapping("/balance/{walletId}")
-	public BigDecimal selectAvailableBalance(@PathVariable Long walletId){
+	public BigDecimal selectAvailableBalance(@PathVariable Long walletId) {
 		return orderService.selectAvailableBalance(walletId);
 	}
 
