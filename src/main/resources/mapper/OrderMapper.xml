@@ -71,7 +71,7 @@
     </update>
 
     <!-- 체결 내역 벌크 인서트 -->
-    <insert id="bulkInsertTradeHistory">
+    <insert id="bulkInsertTransactionHists">
         INSERT INTO kh_holdings.transaction_hists (
         transaction_id, trade_id, order_id, wallet_id,
         transaction_type, asset_type, direction, amount,
@@ -99,7 +99,7 @@
         ) VALUES
         <foreach collection="list" item="c" separator=",">
             (
-            #{c.tokenId}, #{c.candleTime},
+            #{c.tokenId}, TO_TIMESTAMP(#{c.candleTime}),
             #{c.openingPrice}::numeric, #{c.highPrice}::numeric,
             #{c.lowPrice}::numeric, #{c.closingPrice}::numeric,
             #{c.tradeVolume}::numeric, 1

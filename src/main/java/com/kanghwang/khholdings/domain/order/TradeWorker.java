@@ -3,7 +3,6 @@ package com.kanghwang.khholdings.domain.order;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,19 +19,16 @@ import org.redisson.api.RStream;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.StreamMessageId;
 import org.redisson.api.stream.StreamReadArgs;
-import org.redisson.codec.JsonJacksonCodec;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -47,10 +43,7 @@ public class TradeWorker implements CommandLineRunner {
     private final OrderRepository orderRepository;
     private volatile boolean isRunning = true;
     private final CountDownLatch shutdownLatch = new CountDownLatch(1); // 종료 확인을 위한 래치 (1개의 스레드가 끝날 때까지 대기)
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
+    private final RedisKeyManager redisKeyManager;
 
     // 체결 내역 벌크 인서트를 위한 버퍼
     private final Queue<TransactionHistDTO> transactionBuffer = new ConcurrentLinkedQueue<>();
@@ -97,8 +90,9 @@ public class TradeWorker implements CommandLineRunner {
     }
 
     private void processStream() {
+        log.info("현채 접속 중인 레디스 스트림 키: [{}]", redisKeyManager.getTradeStreamKey());
 
-        RStream<String, Object> stream = redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper));
+        RStream<String, Object> stream = redissonClient.getStream(redisKeyManager.getTradeStreamKey());
         StreamMessageId lastId = StreamMessageId.ALL; // 처음부터 혹은 최신부터 읽기 설정 가능
 
         while (isRunning) {
@@ -116,16 +110,14 @@ public class TradeWorker implements CommandLineRunner {
                 for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
                     StreamMessageId currentId = entry.getKey(); // 현재 처리 중인 메시지의 ID
                     Object data = entry.getValue().get("data");
+
                     try {
                         // [1] 데이터 처리 로직
-                        if (data instanceof TransactionRequestDTO) {
+                        if (data instanceof TransactionRequestDTO transactionDTO) {
                             // 1. 체결 정산 처리
-                            TransactionRequestDTO transactionDTO = objectMapper.convertValue(data,
-                                    TransactionRequestDTO.class);
                             handleTransaction(transactionDTO);
-                        } else if (data instanceof RefundRequestDTO) {
+                        } else if (data instanceof RefundRequestDTO refundDTO) {
                             // 2. 취소 및 환불 처리
-                            RefundRequestDTO refundDTO = objectMapper.convertValue(data, RefundRequestDTO.class);
                             handleRefund(refundDTO);
                         }
 
@@ -156,6 +148,7 @@ public class TradeWorker implements CommandLineRunner {
     private void handleTransaction(TransactionRequestDTO trade) {
 
         try {
+            // 이부분도 하나의 트랜잭션으로 묶어야 함
             // 1. [DB] 정산 후 생성된 OUTPUT을 SettlementResultDTO에 담음
             SettlementResultDTO result = new SettlementResultDTO();
             orderRepository.p_process_transaction_settlement(trade, result);
@@ -197,13 +190,13 @@ public class TradeWorker implements CommandLineRunner {
                 .readAllMap();
 
         if (candleMap != null && !candleMap.isEmpty()) {
-            String topicKey = "candle:topic:" + trade.getTokenId();
+            String topicKey = redisKeyManager.getCandleTopicKey(trade.getTokenId());
 
             // 시간은 프론트엔드에서 한국 시간으로 변경 예정
             CandleDTO liveCandle = CandleDTO.builder()
                     .tokenId(trade.getTokenId())
                     .unit(1)
-                    .candleTime(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(minute), ZoneOffset.UTC))
+                    .candleTime(minute)
                     .openingPrice(new BigDecimal(candleMap.get("open")))
                     .highPrice(new BigDecimal(candleMap.get("high")))
                     .lowPrice(new BigDecimal(candleMap.get("low")))
@@ -211,8 +204,9 @@ public class TradeWorker implements CommandLineRunner {
                     .tradeVolume(new BigDecimal(candleMap.get("vol")))
                     .build();
 
+            // [MarketWoker - 차트]
             // DTO 자체를 Redis Topic으로 발행 (MarketWorker가 받음)
-            redissonClient.getTopic(topicKey, new JsonJacksonCodec(objectMapper)).publish(liveCandle);
+            redissonClient.getTopic(topicKey).publish(liveCandle);
         }
     }
 
@@ -260,7 +254,7 @@ public class TradeWorker implements CommandLineRunner {
                 CandleDTO candle = CandleDTO.builder()
                     .tokenId(tokenId)
                     .unit(1)
-                    .candleTime(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(lastMinute), ZoneOffset.UTC))
+                    .candleTime(lastMinute)
                     .openingPrice(new BigDecimal(raw.get("open")))
                     .highPrice(new BigDecimal(raw.get("high")))
                     .lowPrice(new BigDecimal(raw.get("low")))
@@ -340,7 +334,7 @@ public class TradeWorker implements CommandLineRunner {
 
         if (!transactionToSave.isEmpty()) {
             // 처리할 체결 내역들을 한 번에 처리
-            orderRepository.bulkInsertTrasactionHists(transactionToSave);
+            orderRepository.bulkInsertTransactionHists(transactionToSave);
             log.info("[DB] {}건의 체결 내역 저장 완료", transactionToSave.size());
         }
     }

@@ -14,7 +14,7 @@ import java.time.OffsetDateTime;
 public class CandleDTO {
     private Long tokenId;               // 토큰 고유 번호
     private Integer unit;               // unit (1분봉이면 1)
-    private OffsetDateTime candleTime;  // 캔들 기준 시간
+    private Long candleTime;            // 캔들 기준 시간, TrainingView 연동을 위해 Long 사용
 
     private BigDecimal openingPrice;    // 시가
     private BigDecimal highPrice;       // 고가

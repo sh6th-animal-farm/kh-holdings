@@ -3,6 +3,7 @@ package com.kanghwang.khholdings.domain.market;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.apache.ibatis.annotations.Mapper;
 
 import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
@@ -22,4 +23,7 @@ public interface MarketRepository {
 
 	// 특정 토큰 현재가 조회
 	BigDecimal selectLatestTokenPrice(Long tokenId);
+
+	// 차트 조회
+	List<CandleDTO> selectCandles(Long tokenId, int unit, int limit);
 }

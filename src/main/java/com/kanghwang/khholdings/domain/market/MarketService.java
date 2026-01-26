@@ -2,6 +2,7 @@ package com.kanghwang.khholdings.domain.market;
 
 import java.util.List;
 
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +25,11 @@ public class MarketService {
 		return marketRepository.selectBySearch(content);
 	}
 
+	// 차트 조회
+    public List<CandleDTO> selectCandles(Long tokenId, int unit, int limit) {
+		return marketRepository.selectCandles(tokenId, unit, limit);
+  }
+  
 	// 미체결 내역 조회
 	public List<PendingDTO>	selectPending(Long tokenId, Long walletId) {
 		return marketRepository.selectPending(tokenId, walletId);

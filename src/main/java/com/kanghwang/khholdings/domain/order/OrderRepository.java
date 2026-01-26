@@ -32,7 +32,7 @@ public interface OrderRepository {
 	void p_cancel_order_and_refund(RefundRequestDTO refundDTO);
 
 	// 체결 내역 벌크 인서트
-    void bulkInsertTrasactionHists(@Param("list") List<TransactionHistDTO> list);
+    void bulkInsertTransactionHists(@Param("list") List<TransactionHistDTO> list);
 
 	// 1분봉 데이터 벌크 인서트
 	void insertCandlesBatch(@Param("list") List<CandleDTO> list);
