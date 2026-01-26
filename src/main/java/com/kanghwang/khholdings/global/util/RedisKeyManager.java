@@ -26,7 +26,7 @@ public class RedisKeyManager {
 
 
 	// [Redis] 발행/구독 채널 (Redis Topic)
-    //
+	// 6. 체결창 (TOPIC): 웹소켓을 통해 체결 정보를 브라우저에 보내줄 때 사용
 	public String getTradeTopicKey(Long tokenId) {
 		return "trade:topic:" + tokenId;
 	}
@@ -39,6 +39,11 @@ public class RedisKeyManager {
 	// 3. 차트/틱 소식 (TOPIC)
 	public String getCandleTopicKey(Long tokenId) {
 		return "candle:topic:" + tokenId;
+	}
+
+	// 5. 호가창 (MAP): 웹소켓을 통해 호가 정보를 브라우저에 보내줄 때 사용
+	public String getOrderBookAggrKey(Long tokenId, OrderSide side) {
+		return "orderbook:aggr:" + tokenId + ":" + side.name().toLowerCase();
 	}
 
 

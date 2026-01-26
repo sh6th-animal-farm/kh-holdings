@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -15,6 +16,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class TransactionRequestDTO implements Serializable {

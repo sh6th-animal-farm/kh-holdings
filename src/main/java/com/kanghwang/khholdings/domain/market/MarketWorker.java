@@ -5,10 +5,9 @@ import org.redisson.api.RedissonClient;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
+import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
-import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
-import com.kanghwang.khholdings.global.dto.RealTimeEvent;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PostConstruct;
@@ -41,27 +40,17 @@ public class MarketWorker {
 		});
 
 		// [주문/호가]
-		RPatternTopic orderTopic = redissonClient.getPatternTopic("order:topic:*");
+		RPatternTopic orderTopic = redissonClient.getPatternTopic("orderbook:aggr:*:*");
 
-		orderTopic.addListener(RealTimeEvent.class, (pattern, channel, event) -> {
-
-			String tokenId = channel.toString().split(":")[2];
+		orderTopic.addListener(OrderbookDTO.class, (pattern, channel, event) -> {
+			// channel 형태: "kh:orderbook:aggr:777:buy"
+			String[] parts = channel.toString().split(":");
+			String tokenId = parts[parts.length - 2];
+			String side = parts[parts.length - 1];
 
 			messagingTemplate.convertAndSend("/topic/orders/" + tokenId, event);
 
-			String action = event.getAction();
-			Object data = event.getData();
-
-			// if ("INSERT".equals(action)) {
-			// 	OrderRequestDTO orderDTO = (OrderRequestDTO) data;
-			// 	System.out.println("[MarketWorker] WebSocket 주문 입력: OrderID " + orderDTO.getOrderId());
-			// } else
-			if ("UPDATE".equals(action)) {
-				OrderRequestDTO orderDTO = (OrderRequestDTO) data;
-				System.out.println("[MarketWorker] WebSocket 주문 등록: OrderID " + orderDTO.getOrderId());
-			} else {
-				System.out.println("[MarketWorker] WebSocket 주문 삭제: OrderID " + data);
-			}
+			System.out.println("[MarketWorker] WebSocket 호가: " + event.getSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getUpdatedVolume() + " (" + event.getAction() + ")");
 		});
 
 		// [차트]

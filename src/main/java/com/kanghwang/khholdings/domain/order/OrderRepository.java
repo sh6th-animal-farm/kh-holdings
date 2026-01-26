@@ -2,13 +2,16 @@ package com.kanghwang.khholdings.domain.order;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
-import com.kanghwang.khholdings.domain.order.dto.*;
-import org.apache.ibatis.annotations.Mapper;
-
-import org.apache.ibatis.annotations.Param;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;
+import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 
 @Mapper
 public interface OrderRepository {
@@ -29,7 +32,7 @@ public interface OrderRepository {
 	void p_cancel_order_and_refund(RefundRequestDTO refundDTO);
 
 	// 체결 내역 벌크 인서트
-    void bulkInsertTradeHistory(@Param("list") List<TransactionHistDTO> list);
+    void bulkInsertTransactionHists(@Param("list") List<TransactionHistDTO> list);
 
 	// 1분봉 데이터 벌크 인서트
 	void insertCandlesBatch(@Param("list") List<CandleDTO> list);
