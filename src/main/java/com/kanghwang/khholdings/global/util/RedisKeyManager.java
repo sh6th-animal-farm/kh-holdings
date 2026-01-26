@@ -1,8 +1,9 @@
 package com.kanghwang.khholdings.global.util;
 
-import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import com.kanghwang.khholdings.domain.order.type.OrderSide;
 
 @Component
 public class RedisKeyManager {
@@ -16,7 +17,7 @@ public class RedisKeyManager {
         return env == null || env.isEmpty() ? "" : env + ":";
     }
 
-    // 1. 호가창 (ZSET): 가격순 정렬용
+    // 1. 호가창 (ZSET): 레디스 체결 엔진 내 매칭 용
     public String getOrderBookKey(Long tokenId, OrderSide side) {
         return getPrefix() + "spot:orderbook:" + side.name().toLowerCase() + ":" + tokenId;
     }
@@ -28,11 +29,21 @@ public class RedisKeyManager {
 
     // 3. 체결 이벤트 스트림 (STREAM): 체결 결과를 DB에 비동기로 보낼 때 사용
     public String getTradeStreamKey() {
-        return getPrefix() + "orders:all";
+        return getPrefix() + "trade:stream:";
     }
 
     // 4. 차트/틱 소식 (TOPIC)
     public String getCandleTopicKey(Long tokenId) {
         return getPrefix() + "candle:topic:" + tokenId;
+    }
+
+    // 5. 호가창 (MAP): 웹소켓을 통해 호가 정보를 브라우저에 보내줄 때 사용
+    public String getOrderBookAggrKey(Long tokenId, OrderSide side) {
+        return getPrefix() + "orderbook:aggr:" + tokenId + ":" + side.name().toLowerCase();
+    }
+
+    // 6. 체결창 (TOPIC): 웹소켓을 통해 체결 정보를 브라우저에 보내줄 때 사용
+    public String getTradeTopicKey(Long tokenId) {
+        return getPrefix() + "trade:topic:" + tokenId;
     }
 }
