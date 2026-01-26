@@ -16,12 +16,12 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.domain.order.type.OrderType;
-import com.kanghwang.khholdings.global.dto.RealTimeEvent;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
@@ -92,11 +92,10 @@ public class OrderRedisService {
 
 		infoMap.put(myOrderId, myOrderDTO); // 해당 토큰 주문 상세에 내 주문 등록
 
-		// 지정가 주문 정보를 실시간으로 전파 -> MarketWorker가 받아서 웹소켓으로 전송
-		// if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
-		// 	RealTimeEvent<OrderRequestDTO> event = new RealTimeEvent<>("INSERT", myOrderDTO);
-		// 	redissonClient.getTopic("order:topic:" + myOrderDTO.getTokenId(), new JsonJacksonCodec(objectMapper)).publish(event);
-		// }
+		// 웹소켓 호가창 등록 -> MarketWorker가 실시간으로 받아서 브라우저에 전송
+		if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
+			updateAggrOrderBook(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderPrice(), myOrderDTO.getOrderVolume());
+		}
 
 		while (true) {
 
@@ -174,7 +173,7 @@ public class OrderRedisService {
 				// 2) 그 외
 				executedVolume = myOrderDTO.getRemainingToken().min(targetVolume);
 			}
-			
+
 			// 체결할 수량이 없으면 종료
 			// ex. (내 미체결 금액 / 상대방 주문 단가)의 결과가 0.000000001일 때, 9자리 수는 버림 해서 0개가 됨
 			// -> 추후 미체결 금액에 대해 환불 처리
@@ -182,7 +181,7 @@ public class OrderRedisService {
 				log.info("체결 가능한 수량이 없어 매칭을 종료합니다.");
 				break;
 			}
-			
+
 			BigDecimal executedAmount = targetPrice.multiply(executedVolume); // 총 체결 = 상대방 단가(가장 유리) * 체결할 수량
 
 			Long tradeId = snowflakeIdGenerator.nextId(); // 체결 번호 (매수-매도 체결에 대해 동일한 번호 부여)
@@ -264,15 +263,15 @@ public class OrderRedisService {
 				// 1) 0보다 작거나 같으면, 해당 주문을 호가창에서 제거 (매칭 X)
 				log.info("주문 전량 체결 완료: OrderId {}", targetOrderId);
 				removeOrder(myOrderDTO.getTokenId(), counterSide, targetOrderId);
+
+				// 웹소켓 호가창 삭제 -> MarketWorker가 실시간으로 받아서 브라우저에 전송
+				updateAggrOrderBook(tokenId, counterSide, targetPrice, targetOrderDTO.getOrderVolume().negate());
 			} else {
 				// 2) 0보다 크면, 주문 상세 업데이트
 				infoMap.put(targetOrderId, targetOrderDTO);
 
-				// 지정가 주문 정보를 실시간으로 전파 -> MarketWorker가 받아서 웹소켓으로 전송
-				if (targetOrderDTO.getOrderType() == OrderType.LIMIT) {
-					RealTimeEvent<OrderRequestDTO> event = new RealTimeEvent<>("UPDATE", targetOrderDTO);
-					redissonClient.getTopic("order:topic:" + targetOrderDTO.getTokenId(), new JsonJacksonCodec(objectMapper)).publish(event);
-				}
+				// 웹소켓 호가창 업데이트 -> MarketWorker가 실시간으로 받아서 브라우저에 전송
+				updateAggrOrderBook(tokenId, counterSide, targetPrice, executedVolume.negate());
 			}
 		}
 
@@ -293,23 +292,31 @@ public class OrderRedisService {
 		}
 
 		// 완료된 주문이거나, 시장가 주문(잔량 즉시 환불 대상)이면 Redis 호가창에서 먼저 지움
-		if (isCompleted || myOrderDTO.getOrderType() == OrderType.MARKET) {
-			removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
+		// if (isCompleted || myOrderDTO.getOrderType() == OrderType.MARKET) {
+		// 	removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
+		// }
+
+		// 웹소켓 호가창 업데이트 또는 삭제 -> MarketWorker가 실시간으로 받아서 브라우저에 전송
+		BigDecimal executedVolume = myOrderDTO.getOrderVolume().subtract(myOrderDTO.getRemainingToken());
+		if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
+			updateAggrOrderBook(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderPrice(), executedVolume.negate());
 		}
 
 		if (isCompleted) {
 			// 지정가 매수인데 주문 요청 금액보다 싸게 사서 돈이 남은 경우 추가 환불
-			if (myOrderDTO.getOrderType() == OrderType.LIMIT
-					&& myOrderDTO.getOrderSide() == OrderSide.BUY
+			if (myOrderDTO.getOrderType() == OrderType.LIMIT && myOrderDTO.getOrderSide() == OrderSide.BUY
 					&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
-				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
+				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(),
+					myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
 				redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper))
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
 				log.info("지정가 매수 차액 환불: 주문ID {}, 환불금액 {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash());
 			}
+
 			// 체결 완료 시, 호가창과 상세 정보에서 제거
 			log.info("주문 전량 체결 완료: OrderId {}", myOrderDTO.getOrderId());
+			removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
 		} else {
 			// 부분 체결 시,
 			if (myOrderDTO.getOrderType() == OrderType.MARKET) {
@@ -318,16 +325,36 @@ public class OrderRedisService {
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken());
 				redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper))
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
+
 				log.info("시장가 주문 매칭 종료로 잔량 환불: OrderId {}", myOrderDTO.getOrderId());
+				removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
 			} else {
 				// 2) 지정가 주문은 이미 [Step 5]에서 업데이트
 				log.info("지정가 주문 잔량 대기: OrderId {}, RemainingToken {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingToken());
-
-				// 웹소켓에서 주문(호가) 정보 업데이트
-				RealTimeEvent<OrderRequestDTO> event = new RealTimeEvent<>("UPDATE", myOrderDTO);
-				redissonClient.getTopic("order:topic:" + myOrderDTO.getTokenId(), new JsonJacksonCodec(objectMapper)).publish(event);
 			}
 		}
+	}
+
+	// 웹소켓 호가창 가격 및 수량 전송
+	private void updateAggrOrderBook(Long tokenId, OrderSide side, BigDecimal price, BigDecimal volume) {
+		String aggrKey = "order:aggr:" + tokenId + ":" + side;
+		RMap<String, BigDecimal> aggrMap = redissonClient.getMap(aggrKey, new JsonJacksonCodec(objectMapper));
+
+		// 1. Redis Hash 값 업데이트 ("가격" : "수량")
+		// 가격에 해당하는 수량을 갖고 와서 volume을 더한 값을 반환
+		BigDecimal updatedVolume = aggrMap.addAndGet(price.toPlainString(), volume);
+
+		// 2. 수량이 0 이하라면 필드 삭제, 아니면 업데이트 정보 전송
+		String action = "UPDATE";
+		if (updatedVolume.compareTo(BigDecimal.ZERO) <= 0) {
+			aggrMap.remove(price.toPlainString()); // Redis에서 제거
+			updatedVolume = BigDecimal.ZERO;
+			action = "DELETE";
+		}
+
+		// 3. 웹소켓용 토픽에 합산 정보 전송
+		OrderbookDTO orderbookDTO = new OrderbookDTO(price, updatedVolume, side, action);
+		redissonClient.getTopic("order:topic:" + tokenId, new JsonJacksonCodec(objectMapper)).publish(orderbookDTO);
 	}
 
 	// 호가창 및 주문 상세에서 주문 제거
@@ -338,10 +365,6 @@ public class OrderRedisService {
 		// Redisson을 통한 삭제
 		redissonClient.getScoredSortedSet(bookKey).remove(orderId); // 호가창에서 삭제
 		redissonClient.getMap(infoKey).remove(orderId); // 주문 상세에서 삭제
-
-		// 웹소켓에서 주문(호가) 정보 삭제
-		RealTimeEvent<Long> event = new RealTimeEvent<>("DELETE", orderId);
-		redissonClient.getTopic("order:topic:" + tokenId, new JsonJacksonCodec(objectMapper)).publish(event);
 	}
 
 	// 주문 취소 (사용자가 직접)

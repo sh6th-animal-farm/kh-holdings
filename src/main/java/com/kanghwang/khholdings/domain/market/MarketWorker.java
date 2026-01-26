@@ -1,6 +1,5 @@
 package com.kanghwang.khholdings.domain.market;
 
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.redisson.api.RPatternTopic;
 import org.redisson.api.RedissonClient;
 import org.redisson.codec.JsonJacksonCodec;
@@ -10,9 +9,9 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
+import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
-import com.kanghwang.khholdings.global.dto.RealTimeEvent;
 
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -50,25 +49,13 @@ public class MarketWorker {
 		// [주문/호가]
 		RPatternTopic orderTopic = redissonClient.getPatternTopic("order:topic:*", new JsonJacksonCodec(objectMapper));
 
-		orderTopic.addListener(RealTimeEvent.class, (pattern, channel, event) -> {
+		orderTopic.addListener(OrderbookDTO.class, (pattern, channel, event) -> {
 
 			String tokenId = channel.toString().split(":")[2];
 
 			messagingTemplate.convertAndSend("/topic/orders/" + tokenId, event);
 
-			String action = event.getAction();
-			Object data = event.getData();
-
-			// if ("INSERT".equals(action)) {
-			// 	OrderRequestDTO orderDTO = (OrderRequestDTO) data;
-			// 	System.out.println("[MarketWorker] WebSocket 주문 입력: OrderID " + orderDTO.getOrderId());
-			// } else
-			if ("UPDATE".equals(action)) {
-				OrderRequestDTO orderDTO = (OrderRequestDTO) data;
-				System.out.println("[MarketWorker] WebSocket 주문 등록: OrderID " + orderDTO.getOrderId());
-			} else {
-				System.out.println("[MarketWorker] WebSocket 주문 삭제: OrderID " + data);
-			}
+			System.out.println("[MarketWorker] WebSocket 호가: " + event.getSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getUpdatedVolume() + " (" + event.getAction() + ")");
 		});
 
 		// [차트]
