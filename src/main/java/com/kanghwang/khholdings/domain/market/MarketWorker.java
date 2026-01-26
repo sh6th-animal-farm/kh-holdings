@@ -24,7 +24,6 @@ public class MarketWorker {
 
 	@PostConstruct
 	public void listenTradeTopic() {
-		System.out.println("testttttttttttt: "+redisKeyManager.getPrefix());
 		// [체결]
 		// 1. Redis Topic 구독 (패턴 매칭 사용: 모든 토큰의 체결을 감시)
 		// JsonJacksonCodec을 사용하여 브라우저가 읽을 수 있는 JSON 형태로 받기
