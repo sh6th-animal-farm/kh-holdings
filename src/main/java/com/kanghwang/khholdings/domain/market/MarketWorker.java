@@ -6,8 +6,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
+import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
-import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PostConstruct;
@@ -28,16 +28,17 @@ public class MarketWorker {
 		// JsonJacksonCodec을 사용하여 브라우저가 읽을 수 있는 JSON 형태로 받기
 		RPatternTopic tradeTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "trade:topic:*");
 
-		tradeTopic.addListener(TransactionRequestDTO.class, (pattern, channel, msg) -> {
+		tradeTopic.addListener(TradeDTO.class, (pattern, channel, event) -> {
 			// 2. 체결 발생 시, 채널명에서 토큰 ID 추출
 			// 채널 예: "trade:topic:777777"
-			String tokenId = channel.toString().split(":")[2];
+			String[] parts = channel.toString().split(":");
+			String tokenId = parts[parts.length - 1];
 
 			// 3. STOMP 브로커를 통해 구독 중인 사용자들에게 전송
 			// 프론트 구독 주소 예: /topic/trades/777777
-			messagingTemplate.convertAndSend("/topic/trades/" + tokenId, msg);
+			messagingTemplate.convertAndSend("/topic/trades/" + tokenId, event);
 
-			System.out.println("[MarketWorker] WebSocket 체결: TradeID " + msg.getTradeId());
+			System.out.println("[MarketWorker] WebSocket 체결: " + event.getTakerSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getVolume());
 		});
 
 		// [주문/호가]
