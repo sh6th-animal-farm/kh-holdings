@@ -1,6 +1,7 @@
 package com.kanghwang.khholdings.global.config;
 
 import org.redisson.Redisson;
+import org.redisson.api.NameMapper;
 import org.redisson.api.RedissonClient;
 import org.redisson.codec.JsonJacksonCodec;
 import org.redisson.config.Config;
@@ -30,19 +31,46 @@ public class RedissonConfig {
 	@Value("${spring.data.redis.database:0}")
 	private int database;
 
+	// 배포 서버(설정 없음) ➔ 기본값 "" (빈 문자열) 사용
+	// 내 로컬(active profile: local) ➔ 설정값 "local" 사용
+	@Value("${app.env}")
+	private String env;
+
 	@Bean
 	public RedissonClient redissonClient() {
 		Config config = new Config();
 
 		// 1. Redis 연결 설정
 		String redisAddress = String.format("redis://%s:%d", host, port);
+		final  String prefix = (env == null || env.isEmpty()) ? "" : env + ":";
 
 		config.useSingleServer()
 			.setAddress(redisAddress)
 			.setPassword(password)
-			.setDatabase(database);
+			.setDatabase(database)
+			// 2. [전역 접두어 설정] NameMapper 도입
+			// 모든 키나 채널 이름 앞에 자동으로 "local:" 같은 prefix가 붙습니다.
+			.setNameMapper(new NameMapper() {
+				@Override
+				public String map(String name) {
+					// 이미 prefix가 붙어있으면 그대로, 없으면 붙여줌
+					if (name.startsWith(prefix)) {
+						return name;
+					}
+					return prefix + name;
+				}
 
-		// 2. Jackson ObjectMapper 설정 (DTO 직렬화/역직렬화)
+				@Override
+				public String unmap(String name) {
+					// Redis에서 읽어올 때 prefix를 떼고 앱에 전달
+					if (name.startsWith(prefix)) {
+						return name.substring(prefix.length());
+					}
+					return name;
+				}
+		});
+
+		// 3. Jackson ObjectMapper 설정 (DTO 직렬화/역직렬화)
 		// Jackson이 OffsetDateTime을 읽을 있도록 JavaTimeModule 등록
 		ObjectMapper objectMapper = new ObjectMapper()
 			.registerModule(new JavaTimeModule()) // Java 8 날짜 타입 지원 추가

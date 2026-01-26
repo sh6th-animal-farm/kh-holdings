@@ -24,11 +24,9 @@ public class MarketWorker {
 
 	@PostConstruct
 	public void listenTradeTopic() {
-		System.out.println("testttttttttttt: "+redisKeyManager.getPrefix());
 		// [체결]
 		// 1. Redis Topic 구독 (패턴 매칭 사용: 모든 토큰의 체결을 감시)
-		// JsonJacksonCodec을 사용하여 브라우저가 읽을 수 있는 JSON 형태로 받기
-		RPatternTopic tradeTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "trade:topic:*");
+		RPatternTopic tradeTopic = redissonClient.getPatternTopic(redisKeyManager.getTradeTopicPattern() + "*");
 
 		tradeTopic.addListener(TransactionRequestDTO.class, (pattern, channel, msg) -> {
 			// 2. 체결 발생 시, 채널명에서 토큰 ID 추출
@@ -43,7 +41,7 @@ public class MarketWorker {
 		});
 
 		// [주문/호가]
-		RPatternTopic orderTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "order:topic:*");
+		RPatternTopic orderTopic = redissonClient.getPatternTopic("order:topic:*");
 
 		orderTopic.addListener(RealTimeEvent.class, (pattern, channel, event) -> {
 
@@ -67,7 +65,7 @@ public class MarketWorker {
 		});
 
 		// [차트]
-		RPatternTopic candleTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "candle:topic:*");
+		RPatternTopic candleTopic = redissonClient.getPatternTopic("candle:topic:*");
 
 		// 리스너 타입을 candleDTO로 명시
 		candleTopic.addListener(CandleDTO.class, (pattern, channel, msg) -> {

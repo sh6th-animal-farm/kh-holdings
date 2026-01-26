@@ -163,13 +163,13 @@ public class OrderRedisService {
 				// 2) 그 외
 				executedVolume = myOrderDTO.getRemainingToken().min(targetVolume);
 			}
-			
+
 			// 체결할 수량이 없으면 종료
 			if (executedVolume == null || executedVolume.compareTo(BigDecimal.ZERO) <= 0) {
 				log.info("체결 가능한 수량이 없어 매칭을 종료합니다.");
 				break;
 			}
-			
+
 			BigDecimal executedAmount = targetPrice.multiply(executedVolume); // 총 체결 = 상대방 단가(가장 유리) * 체결할 수량
 
 			Long tradeId = snowflakeIdGenerator.nextId(); // 체결 번호 (매수-매도 체결에 대해 동일한 번호 부여)
@@ -190,25 +190,26 @@ public class OrderRedisService {
 			// 체결이 발생할 때마다 Redis에 데이터 전달
 			// -> DB 저장 / 웹소켓 실시간 전송
 
-			// (1) 비동기 정산 및 이력 저장용 (Stream)
-			// TradeWorker가 받아서 프로시저 실행
-			// 현금 및 토큰 정산, 주문 내역 업데이트, 거래 내역 추가
-			redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
+			// (1) 체결 정산 - 비동기 정산 및 이력 저장용 (Stream)
+			// OrderRedisService -> TradeWorker
+			// trade:stream:{tokenId} 현금 및 토큰 정산, 주문 내역 업데이트, 거래 내역 추가
+			redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 					.add(StreamAddArgs.entry("data", transactionDTO));
 
-			// [MarketWorker - 체결]
 			// (2) 실시간 프론트엔드 전파용 (Pub/Sub)
-			// 체결 내역을 MarketWorker가 받아서 웹소켓으로 전송
-			redissonClient.getTopic(redisKeyManager.getPrefix() + "trade:topic:" + myOrderDTO.getTokenId())
+			// OrderRedisService -> MarketWorker
+			// trade:topic:{tokenId}
+			redissonClient.getTopic(redisKeyManager.getTradeTopicKey(myOrderDTO.getTokenId()))
 					.publish(transactionDTO);
 
 			// (3) 현재가 갱신 (예: "ticker:last_price:{tokenId}")
-			// Redis에 해당 토큰의 마지막 체결가를 저장
-			redissonClient.getBucket(redisKeyManager.getPrefix() + "ticker:last_price:" + myOrderDTO.getTokenId())
+			// getBucket: Redis에 해당 토큰의 마지막 체결가를 저장
+			// ticker:last_price:
+			redissonClient.getBucket(redisKeyManager.getLastPriceKey(myOrderDTO.getTokenId()))
 					.set(targetPrice);
 
-			log.info("체결: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
-			log.info("Worker에게 나머지 작업 전달: TradeID {}", tradeId);
+			log.info("[OrderRedisService] 체결: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
+			log.info("[OrderRedisService] Worker에게 나머지 작업 전달: TradeID {}", tradeId);
 
 			// [Step 4] 자산 정산 (미체결 수량 및 금액 갱신)
 			// 1) 나
@@ -244,7 +245,7 @@ public class OrderRedisService {
 				// 지정가 주문 정보를 실시간으로 전파 -> MarketWorker가 받아서 웹소켓으로 전송
 				if (targetOrderDTO.getOrderType() == OrderType.LIMIT) {
 					RealTimeEvent<OrderRequestDTO> event = new RealTimeEvent<>("UPDATE", targetOrderDTO);
-					redissonClient.getTopic(redisKeyManager.getPrefix() + "order:topic:" + targetOrderDTO.getTokenId()).publish(event);
+					redissonClient.getTopic(redisKeyManager.getOrderTopicKey(targetOrderDTO.getTokenId())).publish(event);
 				}
 			}
 		}
@@ -277,7 +278,7 @@ public class OrderRedisService {
 					&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
-				redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
+				redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
 				log.info("지정가 매수 차액 환불: 주문ID {}, 환불금액 {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash());
 			}
@@ -289,7 +290,7 @@ public class OrderRedisService {
 				// 1) 시장가 주문은 미체결 수량 즉시 환불
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken());
-				redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
+				redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
 				log.info("시장가 주문 매칭 종료로 잔량 환불: OrderId {}", myOrderDTO.getOrderId());
 			} else {
@@ -298,7 +299,7 @@ public class OrderRedisService {
 
 				// 웹소켓에서 주문(호가) 정보 업데이트
 				RealTimeEvent<OrderRequestDTO> event = new RealTimeEvent<>("UPDATE", myOrderDTO);
-				redissonClient.getTopic(redisKeyManager.getPrefix() + "order:topic:" + myOrderDTO.getTokenId()).publish(event);
+				redissonClient.getTopic(redisKeyManager.getTradeTopicKey(myOrderDTO.getTokenId())).publish(event);
 			}
 		}
 	}
@@ -314,7 +315,7 @@ public class OrderRedisService {
 
 		// 웹소켓에서 주문(호가) 정보 삭제
 		RealTimeEvent<Long> event = new RealTimeEvent<>("DELETE", orderId);
-		redissonClient.getTopic(redisKeyManager.getPrefix() + "order:topic:" + tokenId).publish(event);
+		redissonClient.getTopic(redisKeyManager.getTradeTopicKey(tokenId)).publish(event);
 	}
 
 	// 주문 취소 (사용자가 직접)
@@ -334,7 +335,7 @@ public class OrderRedisService {
 
 			// 3. 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
 			RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), orderId, orderInfo.getRemainingCash(), orderInfo.getRemainingToken());
-			redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
+			redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 				.add(StreamAddArgs.entry("data", refundRequestDTO));
 
 			log.info("TradeWorker에 주문 취소 요청: OrderId {}", orderId);
