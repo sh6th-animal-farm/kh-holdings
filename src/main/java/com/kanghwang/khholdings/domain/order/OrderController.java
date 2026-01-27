@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.service.OrderService;
+import com.kanghwang.khholdings.global.dto.ApiResponse;
 
 @RestController
 @RequestMapping("/api/order")
@@ -23,14 +24,22 @@ public class OrderController {
 
 	// 해당 토큰 보유 수량 조회
 	@GetMapping("/balance/{walletId}/{tokenId}")
-	public BigDecimal selectHoldingTokenBalance(@PathVariable Long walletId, @PathVariable Long tokenId) {
-		return orderService.selectHoldingTokenBalance(walletId, tokenId);
+	public ResponseEntity<ApiResponse<BigDecimal>> selectHoldingTokenBalance(@PathVariable Long walletId, @PathVariable Long tokenId) {
+		BigDecimal tokenBalance = orderService.selectHoldingTokenBalance(walletId, tokenId);
+		if (tokenBalance == null) {
+			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 보유 수량 조회에 실패했습니다."));
+		}
+		return ResponseEntity.ok(ApiResponse.success("보유 토큰 조회에 성공했습니다.", tokenBalance));
 	}
 
 	// 주문 가능 금액 조회
 	@GetMapping("/balance/{walletId}")
-	public BigDecimal selectAvailableBalance(@PathVariable Long walletId) {
-		return orderService.selectAvailableBalance(walletId);
+	public ResponseEntity<ApiResponse<BigDecimal>> selectAvailableBalance(@PathVariable Long walletId) {
+		BigDecimal cashBalance = orderService.selectAvailableBalance(walletId);
+		if (cashBalance == null) {
+			return ResponseEntity.badRequest().body(ApiResponse.error("주문 가능 금액 조회에 실패했습니다."));
+		}
+		return ResponseEntity.ok(ApiResponse.success("주문 가능 금액 조회에 성공했습니다.", cashBalance));
 	}
 
 	// 매수/매도 주문
