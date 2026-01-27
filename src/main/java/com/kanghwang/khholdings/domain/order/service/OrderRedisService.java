@@ -221,6 +221,9 @@ public class OrderRedisService {
 			TradeDTO tradeSummary = new TradeDTO(targetPrice, executedVolume, mySide, OffsetDateTime.now());
 			redissonClient.getTopic(redisKeyManager.getTradeTopicKey(tokenId)).publish(tradeSummary);
 
+			System.out.println("transactionDTO:::::::::::::::::"+transactionDTO.toString());
+			System.out.println("tradeSummary:::::::::::::::::"+ targetPrice + " " + executedVolume + " " + mySide + " " + OffsetDateTime.now());
+
 			// (3) 현재가 갱신 (예: "ticker:last_price:{tokenId}")
 			// Redis에 해당 토큰의 마지막 체결가를 저장
 			redissonClient.getBucket(redisKeyManager.getPrefix() + "ticker:last_price:" + myOrderDTO.getTokenId())
