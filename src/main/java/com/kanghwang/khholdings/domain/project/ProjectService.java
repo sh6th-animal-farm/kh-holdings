@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.kanghwang.khholdings.domain.market.MarketRepository;
 import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
+import com.kanghwang.khholdings.domain.project.dto.CancelDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendRequestDTO;
 import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
@@ -52,7 +53,7 @@ public class ProjectService {
 
 	// 청약 취소
 	@Transactional
-	public boolean cancelSubscription(Long transactionId) {
+	public CancelDTO cancelSubscription(Long transactionId) {
 
 		// 1. Snowflake ID 생성
 		Long newTransactionId = snowflakeIdGenerator.nextId();
