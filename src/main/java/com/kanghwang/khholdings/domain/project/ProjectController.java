@@ -12,6 +12,7 @@
  import org.springframework.web.bind.annotation.RequestParam;
  import org.springframework.web.bind.annotation.RestController;
 
+ import com.kanghwang.khholdings.domain.project.dto.CancelDTO;
  import com.kanghwang.khholdings.domain.project.dto.DividendRequestDTO;
  import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
  import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
@@ -42,12 +43,12 @@
 
  	// 청약 취소
  	@PostMapping("/cancel/{transactionId}")
- 	public ResponseEntity<ApiResponse<Void>> cancelSubscription(@PathVariable Long transactionId) {
+ 	public ResponseEntity<ApiResponse<CancelDTO>> cancelSubscription(@PathVariable Long transactionId) {
 
- 		boolean isCancelled = projectService.cancelSubscription(transactionId);
+ 		CancelDTO cancelDTO = projectService.cancelSubscription(transactionId);
 
- 		if (isCancelled) {
- 			return ResponseEntity.ok(ApiResponse.error("청약 취소가 완료되었습니다."));
+ 		if (cancelDTO != null) {
+ 			return ResponseEntity.ok(ApiResponse.success("청약 취소가 완료되었습니다.", cancelDTO));
  		} else {
  			return ResponseEntity.badRequest().body(ApiResponse.error("청약 취소에 실패했습니다."));
  		}

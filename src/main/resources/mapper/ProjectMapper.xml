@@ -28,7 +28,7 @@
         RETURNING transaction_id
     </select>
 
-    <insert id="cancelSubscription">
+    <select id="cancelSubscription" resultType="CancelDTO">
         WITH target_tx AS (
             -- 1. 기존 청약 신청 내역 조회
             SELECT wallet_id, amount, trade_id
@@ -57,7 +57,8 @@
             uw.amount, uw.cash_balance, 0,
             0, NOW(), 0, #{hashValue}
         FROM update_wallet uw
-    </insert>
+        RETURNING transaction_id, wallet_id, amount
+    </select>
 
     <insert id="resultSubscription">
         <foreach collection="list" item="item" separator=";">
