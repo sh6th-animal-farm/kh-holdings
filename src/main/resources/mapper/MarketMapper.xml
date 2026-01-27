@@ -11,7 +11,7 @@
                 token_id,
                 closing_price AS market_price
             FROM token_quotes
-            WHERE unit = '1m'::quote_unit_enum
+            WHERE unit = 1
             ORDER BY token_id, created_at DESC
         ),
         daily_stats AS (
@@ -19,7 +19,7 @@
                 token_id,
                 trade_volume AS daily_trade_volume
             FROM token_quotes
-            WHERE unit = '1d'::quote_unit_enum
+            WHERE unit = 1440
             ORDER BY token_id, created_at DESC
         )
         SELECT
