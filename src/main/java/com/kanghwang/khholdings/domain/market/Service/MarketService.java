@@ -1,12 +1,13 @@
-package com.kanghwang.khholdings.domain.market;
+package com.kanghwang.khholdings.domain.market.Service;
 
 import java.util.List;
 
+import com.kanghwang.khholdings.domain.market.MarketRepository;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 
 @Service
@@ -16,12 +17,12 @@ public class MarketService {
 	private MarketRepository marketRepository;
 
 	// 종목 전체 조회
-	public List<MarketDTO> selectAll() {
+	public List<TokenListDTO> selectAll() {
 		return marketRepository.selectAll();
 	}
 
 	// 종목 검색어 조회
-	public List<MarketDTO> selectBySearch(String content) {
+	public List<TokenListDTO> selectBySearch(String content) {
 		return marketRepository.selectBySearch(content);
 	}
 

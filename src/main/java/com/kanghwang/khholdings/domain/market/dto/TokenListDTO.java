@@ -13,10 +13,17 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MarketDTO {
+public class TokenListDTO {
 	private Long tokenId;
 	private String tokenName;
 	private String tickerSymbol;
-	private BigDecimal marketPrice;
-	private BigDecimal dailyTradeVolume;
+	private BigDecimal marketPrice;			// 현재가(시장가)
+	private BigDecimal dailyTradeVolume;	// 오늘 누적 거래 대금
+	
+	private BigDecimal openPrice;			// 오늘 오전 9시 시작 가격
+	private BigDecimal changeRate;			// 등락률
+	
+	// private BigDecimal highPrice;			
+	// private BigDecimal lowPrice;
+
 }

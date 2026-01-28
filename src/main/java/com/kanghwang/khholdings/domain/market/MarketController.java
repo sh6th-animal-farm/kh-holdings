@@ -3,6 +3,7 @@ package com.kanghwang.khholdings.domain.market;
 import java.util.Collections;
 import java.util.List;
 
+import com.kanghwang.khholdings.domain.market.Service.MarketService;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -12,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 
@@ -24,8 +25,8 @@ public class MarketController {
 	private MarketService marketService;
 
 	@GetMapping()
-	public ResponseEntity<ApiResponse<List<MarketDTO>>> selectAll() {
-		List<MarketDTO> list = marketService.selectAll();
+	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectAll() {
+		List<TokenListDTO> list = marketService.selectAll();
 
 		if (list == null || list.isEmpty()) {
 			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 종목 조회에 실패했습니다."));
@@ -34,8 +35,8 @@ public class MarketController {
 	}
 
 	@GetMapping("/search")
-	public ResponseEntity<ApiResponse<List<MarketDTO>>> selectBySearch(@RequestParam(required = false) String content) {
-		List<MarketDTO> list = marketService.selectBySearch(content);
+	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectBySearch(@RequestParam(required = false) String content) {
+		List<TokenListDTO> list = marketService.selectBySearch(content);
 
 		if (list == null || list.isEmpty()) {
 			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 종목 검색에 실패했습니다."));

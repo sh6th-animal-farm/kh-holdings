@@ -5,7 +5,7 @@
 
 <mapper namespace="com.kanghwang.khholdings.domain.market.MarketRepository">
 
-    <select id="selectAll" resultType="MarketDTO">
+    <select id="selectAll" resultType="TokenListDTO">
         WITH minute_stats AS (
             SELECT DISTINCT ON (token_id)
                 token_id,
@@ -34,7 +34,7 @@
         ORDER BY ds.daily_trade_volume DESC NULLS LAST
     </select>
 
-    <select id="selectBySearch" resultType="MarketDTO">
+    <select id="selectBySearch" resultType="TokenListDTO">
         WITH minute_stats AS (
             SELECT DISTINCT ON (token_id)
                 token_id,

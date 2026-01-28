@@ -1,11 +1,13 @@
 package com.kanghwang.khholdings.domain.market;
 
 import org.redisson.api.RPatternTopic;
+import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
@@ -71,6 +73,16 @@ public class MarketWorker {
 					+ ", 거래량: " + event.getTradeVolume()
 					+ ", 캔들 시간: " + event.getCandleTime());
 
+		});
+
+		// [전체 토큰 리스트]
+		RTopic tokenListTopic = redissonClient.getTopic(redisKeyManager.getPrefix() + "market:update:topic");
+
+		tokenListTopic.addListener(TokenListDTO.class, (channel, event) -> {
+			messagingTemplate.convertAndSend("/topic/tokenList", event);
+
+			System.out.println("[MarketWorker] WebSocket 전광판 업데이트: " + event.getTickerSymbol()
+				+ " 현재가: " + event.getMarketPrice() + " 등락률: " + event.getChangeRate() + "%");
 		});
 	}
 }
