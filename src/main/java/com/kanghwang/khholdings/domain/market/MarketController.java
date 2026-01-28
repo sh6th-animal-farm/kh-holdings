@@ -1,9 +1,9 @@
 package com.kanghwang.khholdings.domain.market;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
+import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 
 @RestController
@@ -43,6 +46,47 @@ public class MarketController {
 		return ResponseEntity.ok(ApiResponse.success("토큰 종목 검색에 성공했습니다.", list));
 	}
 
+	@GetMapping("/current/{tokenId}")
+	public ResponseEntity<ApiResponse<BigDecimal>> getCurrentPrice(@PathVariable("tokenId") Long tokenId) {
+		BigDecimal curPrice = marketService.getCurrentPrice(tokenId);
+
+		if (curPrice == null) {
+			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 현재가 조회에 실패했습니다."));
+		}
+		return ResponseEntity.ok(ApiResponse.success("토큰 현재가 조회에 성공했습니다.", curPrice));
+	}
+
+	@GetMapping("/order/buy/{tokenId}")
+	public ResponseEntity<ApiResponse<List<OrderPriceDTO>>> selectAllOrderBuyPrice(@PathVariable Long tokenId) {
+		List<OrderPriceDTO> list = marketService.selectAllOrderBuyPrice(tokenId);
+
+		if (list == null || list.isEmpty()) {
+			return ResponseEntity.ok(ApiResponse.success("매수 호가 데이터가 없습니다.", Collections.emptyList()));
+		}
+		return ResponseEntity.ok(ApiResponse.success("매수 호가 조회에 성공했습니다.", list));
+	}
+
+	@GetMapping("/order/sell/{tokenId}")
+	public ResponseEntity<ApiResponse<List<OrderPriceDTO>>> selectAllOrderSellPrice(@PathVariable Long tokenId) {
+		List<OrderPriceDTO> list = marketService.selectAllOrderSellPrice(tokenId);
+
+		if (list == null || list.isEmpty()) {
+			return ResponseEntity.ok(ApiResponse.success("매도 호가 데이터가 없습니다.", Collections.emptyList()));
+		}
+		return ResponseEntity.ok(ApiResponse.success("매도 호가 조회에 성공했습니다.", list));
+	}
+
+	@GetMapping("/trade/{tokenId}")
+	public ResponseEntity<ApiResponse<List<TradeDTO>>> selectAllTradePrice(@PathVariable Long tokenId) {
+
+		List<TradeDTO> list = marketService.selectAllTradePrice(tokenId);
+
+		if (list == null || list.isEmpty()) {
+			return ResponseEntity.ok(ApiResponse.success("체결 데이터가 없습니다.", Collections.emptyList()));
+		}
+		return ResponseEntity.ok(ApiResponse.success("체결 조회에 성공했습니다.", list));
+	}
+
 	@GetMapping("/candles/{tokenId}")
 	public ResponseEntity<ApiResponse<List<CandleDTO>>> selectCandles(
             @PathVariable Long tokenId,
@@ -58,8 +102,8 @@ public class MarketController {
 		return ResponseEntity.ok(ApiResponse.success("차트 조회에 성공했습니다.", list));
   }
     
-	@GetMapping("/{tokenId}/pending")
-	public ResponseEntity<ApiResponse<List<PendingDTO>>> selectPending(@PathVariable Long tokenId, @RequestParam Long walletId) {
+	@GetMapping("/{tokenId}/pending/{walletId}")
+	public ResponseEntity<ApiResponse<List<PendingDTO>>> selectPending(@PathVariable Long tokenId, @PathVariable Long walletId) {
 		List<PendingDTO> list = marketService.selectPending(tokenId, walletId);
 
 		if (list == null || list.isEmpty()) {
