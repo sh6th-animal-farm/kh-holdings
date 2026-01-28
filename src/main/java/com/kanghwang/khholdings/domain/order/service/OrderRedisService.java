@@ -25,6 +25,7 @@ import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -80,15 +81,15 @@ public class OrderRedisService {
 				// 매수인 경우, 내림차순 정렬을 위해 가격을 음수로 변환
 				score = score.negate();
 			}
-			myOrderBook.add(score.doubleValue(), myOrderId); // 해당 토큰 호가창에 내 주문 등록
+
+			// 매칭 엔진 내 호가창 (-> 체결이 이루어짐)
+			myOrderBook.add(score.doubleValue(), myOrderId);
+
+			// 웹소켓 호가창 (-> 토큰 거래소에 호가를 띄워줌)
+			updateAggrOrderBook(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderPrice(), myOrderDTO.getOrderVolume());
 		}
 
 		infoMap.put(myOrderId, myOrderDTO); // 해당 토큰 주문 상세에 내 주문 등록
-
-		// 웹소켓 호가창 등록 -> MarketWorker가 실시간으로 받아서 브라우저에 전송
-		if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
-			updateAggrOrderBook(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderPrice(), myOrderDTO.getOrderVolume());
-		}
 
 		while (true) {
 
@@ -123,8 +124,8 @@ public class OrderRedisService {
 
 			// 상대방이 매수인 경우, 가격을 양수로 변환 (<-Sorted Set을 내림차순 정렬하기 위해 음수로 변환해서 넣음)
 			BigDecimal targetPrice = (counterSide == OrderSide.BUY)
-					? targetScore.negate()
-					: targetScore;
+				? targetScore.negate()
+				: targetScore;
 
 
 			// [Step 2] 지정가 주문(me)인 경우, 가격 조건 확인 (내 가격 vs 상대방 가격)
@@ -224,7 +225,7 @@ public class OrderRedisService {
 			// (3) 현재가 갱신 (예: "ticker:last_price:{tokenId}")
 			// Redis에 해당 토큰의 마지막 체결가를 저장
 			redissonClient.getBucket(redisKeyManager.getPrefix() + "ticker:last_price:" + myOrderDTO.getTokenId())
-					.set(targetPrice);
+				.set(targetPrice);
 
 			log.info("체결: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
 			log.info("Worker에게 나머지 작업 전달: TradeID {}", tradeId);
@@ -232,7 +233,7 @@ public class OrderRedisService {
 			// [Step 4] 자산 정산 (미체결 수량 및 금액 갱신)
 			// 1) 나
 			if (myOrderDTO.getOrderSide() == OrderSide.SELL
-					|| (myOrderDTO.getOrderSide() == OrderSide.BUY && myOrderDTO.getOrderType() == OrderType.LIMIT)) {
+				|| (myOrderDTO.getOrderSide() == OrderSide.BUY && myOrderDTO.getOrderType() == OrderType.LIMIT)) {
 				myOrderDTO.setRemainingToken(myOrderDTO.getRemainingToken().subtract(executedVolume));
 			}
 			if (myOrderDTO.getOrderSide() == OrderSide.BUY) {
@@ -240,7 +241,7 @@ public class OrderRedisService {
 			}
 			// 2) 상대방
 			if (targetOrderDTO.getOrderSide() == OrderSide.SELL
-					|| (targetOrderDTO.getOrderSide() == OrderSide.BUY && targetOrderDTO.getOrderType() == OrderType.LIMIT)) {
+				|| (targetOrderDTO.getOrderSide() == OrderSide.BUY && targetOrderDTO.getOrderType() == OrderType.LIMIT)) {
 				targetOrderDTO.setRemainingToken(targetOrderDTO.getRemainingToken().subtract(executedVolume));
 			}
 			if (targetOrderDTO.getOrderSide() == OrderSide.BUY) {
@@ -249,6 +250,9 @@ public class OrderRedisService {
 
 			// [Step 5] 호가창 업데이트
 			// 1) 나
+			if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
+				updateAggrOrderBook(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderPrice(), executedVolume.negate());
+			}
 			infoMap.put(myOrderId, myOrderDTO);
 
 			// 2) 상대방
@@ -286,16 +290,10 @@ public class OrderRedisService {
 		// 	removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
 		// }
 
-		// 웹소켓 호가창 업데이트 또는 삭제 -> MarketWorker가 실시간으로 받아서 브라우저에 전송
-		BigDecimal executedVolume = myOrderDTO.getOrderVolume().subtract(myOrderDTO.getRemainingToken());
-		if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
-			updateAggrOrderBook(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderPrice(), executedVolume.negate());
-		}
-
 		if (isCompleted) {
 			// 지정가 매수인데 주문 요청 금액보다 싸게 사서 돈이 남은 경우 추가 환불
 			if (myOrderDTO.getOrderType() == OrderType.LIMIT && myOrderDTO.getOrderSide() == OrderSide.BUY
-					&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
+				&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
 				redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
