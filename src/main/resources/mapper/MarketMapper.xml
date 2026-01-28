@@ -6,6 +6,53 @@
 <mapper namespace="com.kanghwang.khholdings.domain.market.MarketRepository">
 
     <select id="selectAll" resultType="TokenListDTO">
+        WITH BaseTime AS (
+            SELECT
+                CASE
+                    WHEN CURRENT_TIME <![CDATA[ < ]]> '09:00:00' THEN CURRENT_DATE - INTERVAL '15 hours' -- 어제 09:00
+                    ELSE CURRENT_DATE <![CDATA[ + ]]> INTERVAL '9 hours' -- 오늘 09:00
+                END as start_time
+        ),
+        DailyStats AS (
+            SELECT
+                token_id,
+                SUM(trade_amount) as daily_vol,
+                MAX(high_price) as daily_high, -- 오늘 최고가
+                MIN(low_price) as daily_low    -- 오늘 최저가
+            FROM token_quotes, BaseTime
+            WHERE candle_time <![CDATA[ >= ]]> start_time
+            GROUP BY token_id
+        ),
+        OpenPrice AS (
+            SELECT DISTINCT ON (token_id)
+                token_id, opening_price
+            FROM token_quotes q, BaseTime bt
+            WHERE q.candle_time <![CDATA[ >= ]]> bt.start_time
+            ORDER BY token_id, candle_time ASC
+        ),
+        LatestPrice AS (
+            SELECT DISTINCT ON (token_id)
+                token_id, closing_price
+            FROM token_quotes
+            ORDER BY token_id, candle_time DESC
+        )
+        SELECT
+            t.token_id,
+            t.token_name,
+            t.ticker_symbol,
+            COALESCE(lp.closing_price, t.issue_price) as marketPrice, -- 현재가(종가)
+            COALESCE(op.opening_price, lp.closing_price, t.issue_price) as openPrice, -- 시가
+            COALESCE(ds.daily_high, lp.closing_price, t.issue_price) as highPrice, -- 고가
+            COALESCE(ds.daily_low, lp.closing_price, t.issue_price) as lowPrice, -- 저가
+            COALESCE(ds.daily_vol, 0) as "dailyTradeVolume"
+        FROM tokens t
+        LEFT JOIN DailyStats ds ON t.token_id = ds.token_id
+        LEFT JOIN OpenPrice  op ON t.token_id = op.token_id
+        LEFT JOIN LatestPrice lp ON t.token_id = lp.token_id
+        WHERE t.deleted_at IS null
+    </select>
+
+    <select id="selectBySearch" resultType="TokenListDTO">
         WITH minute_stats AS (
             SELECT DISTINCT ON (token_id)
                 token_id,
@@ -20,35 +67,6 @@
                 trade_volume AS daily_trade_volume
             FROM token_quotes
             WHERE unit = 1440
-            ORDER BY token_id, created_at DESC
-        )
-        SELECT
-            t.token_id AS token_id,
-            t.token_name AS token_name,
-            t.ticker_symbol AS ticker_symbol,
-            COALESCE(ms.market_price, 0) AS market_price,
-            COALESCE(ds.daily_trade_volume, 0) AS daily_trade_volume
-        FROM tokens t
-                 LEFT JOIN minute_stats ms ON t.token_id = ms.token_id
-                 LEFT JOIN daily_stats ds ON t.token_id = ds.token_id
-        ORDER BY ds.daily_trade_volume DESC NULLS LAST
-    </select>
-
-    <select id="selectBySearch" resultType="TokenListDTO">
-        WITH minute_stats AS (
-            SELECT DISTINCT ON (token_id)
-                token_id,
-                closing_price AS market_price
-            FROM token_quotes
-            WHERE unit = '1m'::quote_unit_enum
-            ORDER BY token_id, created_at DESC
-        ),
-        daily_stats AS (
-            SELECT DISTINCT ON (token_id)
-                token_id,
-                trade_volume AS daily_trade_volume
-            FROM token_quotes
-            WHERE unit = '1d'::quote_unit_enum
             ORDER BY token_id, created_at DESC
         )
         SELECT

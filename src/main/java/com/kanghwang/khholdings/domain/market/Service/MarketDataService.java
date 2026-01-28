@@ -62,29 +62,29 @@ public class MarketDataService {
 	// 1. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
 	public void updateMarketSnapshot(TransactionRequestDTO trade) {
 		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
-		TokenListDTO tokenList = marketInfoMap.get(trade.getTokenId());
+		TokenListDTO token = marketInfoMap.get(trade.getTokenId());
 
-		if(tokenList != null) {
+		if(token != null) {
 			// 현재가
-			tokenList.setMarketPrice(trade.getTargetPrice());
-			if (tokenList.getOpenPrice() != null && tokenList.getOpenPrice().compareTo(BigDecimal.ZERO) > 0) {
+			token.setMarketPrice(trade.getTargetPrice());
+			if (token.getOpenPrice() != null && token.getOpenPrice().compareTo(BigDecimal.ZERO) > 0) {
 				// 등락률 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
-				BigDecimal rate = trade.getTargetPrice().subtract(tokenList.getOpenPrice())
-					.divide(tokenList.getOpenPrice(), 4, RoundingMode.HALF_UP)
+				BigDecimal rate = trade.getTargetPrice().subtract(token.getOpenPrice())
+					.divide(token.getOpenPrice(), 4, RoundingMode.HALF_UP)
 					.multiply(new BigDecimal("100"));
-				tokenList.setChangeRate(rate);
+				token.setChangeRate(rate);
 			}
 			// 거래대금
 			BigDecimal amount = trade.getTargetPrice().multiply(trade.getExecutedVolume());
-			BigDecimal newTotalVolume = tokenList.getDailyTradeVolume().add(amount);
-			tokenList.setDailyTradeVolume(newTotalVolume);
+			BigDecimal newTotalVolume = token.getDailyTradeVolume().add(amount);
+			token.setDailyTradeVolume(newTotalVolume);
 
 			// 거래대금에 따른 순위
-			redissonClient.getScoredSortedSet("market:ranking")
+			redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() +"market:ranking")
 					.addScore(trade.getTokenId(), amount.doubleValue());
 
-			marketInfoMap.put(trade.getTokenId(), tokenList);
-			redissonClient.getTopic("market:update:topic").publish(tokenList);
+			marketInfoMap.put(trade.getTokenId(), token);
+			redissonClient.getTopic(redisKeyManager.getPrefix() +"market:update:topic").publish(token);
 		}
 	}
 
@@ -150,6 +150,7 @@ public class MarketDataService {
 			// 배치에 모아뒀다가
 			batch.getMap("market:info").putAsync(tokenId, dto);
 			batch.getTopic("market:update:topic").publishAsync(dto);
+			System.out.println("[MarketDataService] 9시 초기화 dto: " + dto.toString());
 		}
 		// 한 번에 redis로 전송
 		batch.execute();

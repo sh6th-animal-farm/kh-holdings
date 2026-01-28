@@ -54,7 +54,7 @@ public class MarketWorker {
 
 			messagingTemplate.convertAndSend("/topic/orders/" + tokenId, event);
 
-			System.out.println("[MarketWorker] WebSocket 호가: " + event.getSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getUpdatedVolume() + " (" + event.getAction() + ")");
+			System.out.println("[MarketWorker] -> [/topic/orders/] WebSocket 호가: " + event.getSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getUpdatedVolume() + " (" + event.getAction() + ")");
 		});
 
 		// [차트]
@@ -67,8 +67,10 @@ public class MarketWorker {
 
 			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
 
-			System.out.println("[MarketWorker] WebSocket : OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId() + ", 시가: " + event.getOpeningPrice()
-					+ ", 고가: " + event.getHighPrice() + " 저가: " + event.getLowPrice()
+			System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
+					+ ", 시가: " + event.getOpeningPrice()
+					+ ", 고가: " + event.getHighPrice()
+					+ ", 저가: " + event.getLowPrice()
 					+ ", 종가: " + event.getClosingPrice()
 					+ ", 거래량: " + event.getTradeVolume()
 					+ ", 캔들 시간: " + event.getCandleTime());
@@ -81,8 +83,15 @@ public class MarketWorker {
 		tokenListTopic.addListener(TokenListDTO.class, (channel, event) -> {
 			messagingTemplate.convertAndSend("/topic/tokenList", event);
 
-			System.out.println("[MarketWorker] WebSocket 전광판 업데이트: " + event.getTickerSymbol()
-				+ " 현재가: " + event.getMarketPrice() + " 등락률: " + event.getChangeRate() + "%");
+			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
+					+ " 토큰명: " + event.getTokenName()
+					+ ", 현재가: " + event.getMarketPrice()
+					+ ", 시가: " + event.getOpenPrice()
+					+ ", 고가: " + event.getHighPrice()
+					+ ", 저가: " + event.getLowPrice()
+					+ ", 등락률: " + event.getChangeRate() + "%"
+					+ ", 누적 거래량: " + event.getDailyTradeVolume()
+					);
 		});
 	}
 }

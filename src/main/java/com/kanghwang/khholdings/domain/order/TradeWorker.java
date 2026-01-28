@@ -1,6 +1,7 @@
 package com.kanghwang.khholdings.domain.order;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -10,10 +11,11 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import org.redisson.api.RStream;
-import org.redisson.api.RedissonClient;
-import org.redisson.api.StreamMessageId;
+import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import org.redisson.api.*;
 import org.redisson.api.stream.StreamReadArgs;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -40,13 +42,14 @@ public class TradeWorker implements CommandLineRunner {
     private volatile boolean isRunning = true;
     private final CountDownLatch shutdownLatch = new CountDownLatch(1); // 종료 확인을 위한 래치 (1개의 스레드가 끝날 때까지 대기)
     private final RedisKeyManager redisKeyManager;
-	private final MarketDataService  marketDataService;
+    private final MarketRepository marketRepository;
 
     // 체결 내역 벌크 인서트를 위한 버퍼
     private final Queue<TransactionHistDTO> transactionBuffer = new ConcurrentLinkedQueue<>();
 
     @Override
     public void run(String... args) throws Exception {
+        initializeMarketInfo(); // Redis 토큰 리스트(마켓) 정보 초기화
         Thread workerThread = new Thread(this::processStream);
         workerThread.setDaemon(true);
         workerThread.start();
@@ -131,10 +134,7 @@ public class TradeWorker implements CommandLineRunner {
             SettlementResultDTO result = new SettlementResultDTO();
             orderRepository.p_process_transaction_settlement(trade, result);
 
-            // 2. 1분 봉 제작, 토큰 실시간 리스트 제작
-			marketDataService.processMarketUpdate(trade);
-
-            // 3. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
+            // 2. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
             enqueueTransactionLogs(trade, result);
 
             log.info("[TradeWorker] 체결 정산 완료: TradeID {}", trade.getTradeId());
@@ -145,8 +145,6 @@ public class TradeWorker implements CommandLineRunner {
 
         }
     }
-
-
 
     // [DB] 체결 내역 생성
     // TransactionRequestDTO 누가 누구랑 얼마에 체결됐는가?
@@ -219,5 +217,35 @@ public class TradeWorker implements CommandLineRunner {
         } catch (Exception e) {
             log.error("[TradeWorker] 환불/취소 처리 실패: {}", e.getMessage());
         }
+    }
+
+    private void initializeMarketInfo() {
+        log.info("[TradeWorker] Redis에 토큰 리스트 초기화");
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+        List<TokenListDTO> tokens = marketRepository.selectAll();
+
+        if(tokens == null || tokens.isEmpty()) {
+            log.warn("[TradeWorker] 토큰 데이터가 존재하지 않습니다.");
+            return;
+        }
+        Map<Long, TokenListDTO> bulkMap = tokens.stream()
+                .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> {
+                    dto.setChangeRate(calculateRate(dto.getMarketPrice(), dto.getOpenPrice()));
+                    return dto;
+                }));
+
+        marketInfoMap.putAll(bulkMap);
+
+        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet("market:ranking");
+        bulkMap.forEach((id, dto) -> {
+            rankingSet.add(dto.getDailyTradeVolume().doubleValue(), id);
+        });
+    }
+
+    private BigDecimal calculateRate(BigDecimal current, BigDecimal open) {
+        if(open == null || open.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
+        return current.subtract(open)
+                .divide(open, 4, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"));
     }
 }

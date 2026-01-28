@@ -1,10 +1,15 @@
 package com.kanghwang.khholdings.domain.market;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import com.kanghwang.khholdings.domain.market.Service.MarketService;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
+import lombok.RequiredArgsConstructor;
+import org.redisson.api.RMap;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,16 +24,25 @@ import com.kanghwang.khholdings.global.dto.ApiResponse;
 
 @RestController
 @RequestMapping("/api/market")
+@RequiredArgsConstructor
 public class MarketController {
 
-	@Autowired
-	private MarketService marketService;
+	private final MarketService marketService;
+	private final RedissonClient redissonClient;
+	private final RedisKeyManager redisKeyManager;
 
+	// 전체 토큰 목록(시세) 조회
 	@GetMapping()
 	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectAll() {
-		List<TokenListDTO> list = marketService.selectAll();
+		// Redis에서 실시간으로 덮어쓰기 되고 있는 현재 데이터 맵 가져오기
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() + "market:info");
 
-		if (list == null || list.isEmpty()) {
+		List<TokenListDTO> list = new ArrayList<>(marketInfoMap.values());
+
+		// 거래대금으로 내림차순 정렬
+		list.sort((a, b) -> b.getDailyTradeVolume().compareTo(a.getDailyTradeVolume()));
+
+		if (list.isEmpty()) {
 			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 종목 조회에 실패했습니다."));
 		}
 		return ResponseEntity.ok(ApiResponse.success("토큰 종목 조회에 성공했습니다.", list));
