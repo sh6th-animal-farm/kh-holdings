@@ -135,7 +135,7 @@
             u.user_id,
             w.wallet_id,
             h.token_id,
-            h.token_balance as total_balance
+            h.token_balance
         FROM holdings h
             JOIN wallets w ON h.wallet_id = w.wallet_id
             JOIN users u ON w.user_id = u.user_id
@@ -154,7 +154,7 @@
             (
             #{item.tokenId},
             #{item.walletId},
-            #{item.totalBalance}
+            #{item.tokenBalance}
             )
         </foreach>
     </insert>
