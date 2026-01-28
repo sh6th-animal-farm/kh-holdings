@@ -67,16 +67,20 @@ public class MarketDataService {
 		if(token != null) {
 			// 현재가
 			token.setMarketPrice(trade.getTargetPrice());
+
 			if (token.getOpenPrice() != null && token.getOpenPrice().compareTo(BigDecimal.ZERO) > 0) {
 				// 등락률 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
 				BigDecimal rate = trade.getTargetPrice().subtract(token.getOpenPrice())
 					.divide(token.getOpenPrice(), 4, RoundingMode.HALF_UP)
-					.multiply(new BigDecimal("100"));
+					.multiply(new BigDecimal("100"))
+					.stripTrailingZeros() // 1.2500 -> 1.25 로 깔끔하게 정리
+					.setScale(2, RoundingMode.HALF_UP);
 				token.setChangeRate(rate);
 			}
 			// 거래대금
 			BigDecimal amount = trade.getTargetPrice().multiply(trade.getExecutedVolume());
-			BigDecimal newTotalVolume = token.getDailyTradeVolume().add(amount);
+			BigDecimal newTotalVolume = token.getDailyTradeVolume().add(amount)
+					.setScale(0, RoundingMode.DOWN);
 			token.setDailyTradeVolume(newTotalVolume);
 
 			// 거래대금에 따른 순위
@@ -84,6 +88,7 @@ public class MarketDataService {
 					.addScore(trade.getTokenId(), amount.doubleValue());
 
 			marketInfoMap.put(trade.getTokenId(), token);
+
 			redissonClient.getTopic(redisKeyManager.getPrefix() +"market:update:topic").publish(token);
 		}
 	}
@@ -134,7 +139,7 @@ public class MarketDataService {
 	// 현재가, 등락률, 거래대금 갱신
 	@Scheduled(cron = "0 0 9 * * *")
 	public void resetDailyData() {
-		redissonClient.getScoredSortedSet("market:ranking").clear();
+		redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking").clear();
 
 		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
 		RBatch batch = redissonClient.createBatch();

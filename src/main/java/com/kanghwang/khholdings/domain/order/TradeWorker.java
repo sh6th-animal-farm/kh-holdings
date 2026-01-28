@@ -224,6 +224,11 @@ public class TradeWorker implements CommandLineRunner {
         RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
         List<TokenListDTO> tokens = marketRepository.selectAll();
 
+        if (!marketInfoMap.isEmpty()) {
+            log.info("[TradeWorker] Redis에 이미 마켓 데이터가 존재하므로 초기화를 건너뜁니다.");
+            return;
+        }
+
         if(tokens == null || tokens.isEmpty()) {
             log.warn("[TradeWorker] 토큰 데이터가 존재하지 않습니다.");
             return;
@@ -236,7 +241,7 @@ public class TradeWorker implements CommandLineRunner {
 
         marketInfoMap.putAll(bulkMap);
 
-        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet("market:ranking");
+        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
         bulkMap.forEach((id, dto) -> {
             rankingSet.add(dto.getDailyTradeVolume().doubleValue(), id);
         });
@@ -246,6 +251,7 @@ public class TradeWorker implements CommandLineRunner {
         if(open == null || open.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
         return current.subtract(open)
                 .divide(open, 4, RoundingMode.HALF_UP)
-                .multiply(new BigDecimal("100"));
+                .multiply(new BigDecimal("100"))
+                .stripTrailingZeros(); // 1.2500 -> 1.25 로 깔끔하게 정리
     }
 }

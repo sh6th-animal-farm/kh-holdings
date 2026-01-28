@@ -44,12 +44,13 @@
             COALESCE(op.opening_price, lp.closing_price, t.issue_price) as openPrice, -- 시가
             COALESCE(ds.daily_high, lp.closing_price, t.issue_price) as highPrice, -- 고가
             COALESCE(ds.daily_low, lp.closing_price, t.issue_price) as lowPrice, -- 저가
-            COALESCE(ds.daily_vol, 0) as "dailyTradeVolume"
+            COALESCE(ds.daily_vol, 0) as dailyTradeVolume
         FROM tokens t
         LEFT JOIN DailyStats ds ON t.token_id = ds.token_id
         LEFT JOIN OpenPrice  op ON t.token_id = op.token_id
         LEFT JOIN LatestPrice lp ON t.token_id = lp.token_id
         WHERE t.deleted_at IS null
+        ORDER BY dailyTradeVolume DESC
     </select>
 
     <select id="selectBySearch" resultType="TokenListDTO">
