@@ -59,13 +59,18 @@ public class MarketWorker {
 		RPatternTopic candleTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "candle:topic:*");
 
 		// 리스너 타입을 candleDTO로 명시
-		candleTopic.addListener(CandleDTO.class, (pattern, channel, msg) -> {
+		candleTopic.addListener(CandleDTO.class, (pattern, channel, event) -> {
 			String[] parts = channel.toString().split(":");
 			String tokenId = parts[parts.length - 1];
 
-			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, msg);
+			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
 
-			System.out.println("[MarketWorker] WebSocket : OHLCV 및 차트 업데이트 " + msg);
+			System.out.println("[MarketWorker] WebSocket : OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId() + ", 시가: " + event.getOpeningPrice()
+					+ ", 고가: " + event.getHighPrice() + " 저가: " + event.getLowPrice()
+					+ ", 종가: " + event.getClosingPrice()
+					+ ", 거래량: " + event.getTradeVolume()
+					+ ", 캔들 시간: " + event.getCandleTime());
+
 		});
 	}
 }
