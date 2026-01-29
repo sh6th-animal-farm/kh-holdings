@@ -24,7 +24,7 @@ public class CarbonController {
 	public ResponseEntity<ApiResponse<List<HoldingRequestDTO>>> selectTokenIdByWalletId(@PathVariable Long walletId) {
 
 		List<HoldingRequestDTO> list = carbonService.selectTokenIdByWalletId(walletId);
-		if (list == null) {
+		if (list.isEmpty()) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
 		return ApiResponseUtil.ok("토큰 보유 수량 조회에 성공했습니다.", list);
