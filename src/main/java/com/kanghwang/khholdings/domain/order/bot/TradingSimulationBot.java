@@ -5,17 +5,18 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.service.OrderService;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.domain.order.type.OrderType;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class TradingSimulationBot {
 
 	private final OrderService orderService;
 	private final RedissonClient redissonClient;
+	private final RedisKeyManager redisKeyManager;
 	private volatile boolean isRunning = false;
 
 	private final Long[] testWalletIds = {
@@ -39,7 +41,7 @@ public class TradingSimulationBot {
 	};
 
 	@Async
-	@Scheduled(fixedDelay = 500)
+	@Scheduled(fixedDelay = 10)
 	public void runSimulation() {
 		if (!isRunning) {
 			return;
@@ -65,7 +67,7 @@ public class TradingSimulationBot {
 	private OrderRequestDTO createRandomOrder() {
 		var random = java.util.concurrent.ThreadLocalRandom.current();
 
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() + "market:info");
 		List<TokenListDTO> tokens = new ArrayList<>(marketInfoMap.readAllValues());
 
 		if (tokens.isEmpty()) {

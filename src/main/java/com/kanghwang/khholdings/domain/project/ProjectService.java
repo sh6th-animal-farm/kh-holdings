@@ -6,10 +6,14 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.redisson.api.RMap;
+import org.redisson.api.RScoredSortedSet;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
 import com.kanghwang.khholdings.domain.project.dto.CancelDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendDTO;
@@ -18,10 +22,13 @@ import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
 import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
@@ -29,6 +36,8 @@ public class ProjectService {
 	private final ProjectRepository projectRepository;
 	private final MarketRepository marketRepository;
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
+	private final RedissonClient redissonClient;
+	private final RedisKeyManager redisKeyManager;
 
 	// 청약 신청
 	@Transactional
@@ -240,6 +249,29 @@ public class ProjectService {
 
 	// 토큰 발행
 	public boolean openToken(OpenDTO openDTO){
-		return projectRepository.openToken(openDTO) > 0;
+
+		boolean isSaved = projectRepository.openToken(openDTO) > 0;
+
+		if (isSaved) {
+			TokenListDTO tokenInfo = TokenListDTO.builder()
+				.tokenId(openDTO.getTokenId())
+				.tokenName(openDTO.getTokenName())
+				.tickerSymbol(openDTO.getTickerSymbol())
+				.marketPrice(openDTO.getIssuePrice())
+				.dailyTradeVolume(BigDecimal.ZERO)
+				.changeRate(BigDecimal.ZERO)
+				.build();
+
+			RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() + "market:info");
+			marketInfoMap.put(tokenInfo.getTokenId(), tokenInfo);
+			redissonClient.getTopic(redisKeyManager.getPrefix() + "market:update:topic").publish(tokenInfo);
+
+			RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
+			rankingSet.add(0.0, tokenInfo.getTokenId());
+
+			log.info("[market:info/market:ranking] 새로운 토큰 등록 완료: {}", tokenInfo.getTokenName());
+		}
+
+		return isSaved;
 	}
 }

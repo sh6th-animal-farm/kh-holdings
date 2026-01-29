@@ -61,7 +61,7 @@ public class MarketDataService {
 
 	// 1. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
 	public void updateMarketSnapshot(TransactionRequestDTO trade) {
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() + "market:info");
 		TokenListDTO token = marketInfoMap.get(trade.getTokenId());
 
 		if(token != null) {
@@ -141,7 +141,7 @@ public class MarketDataService {
 	public void resetDailyData() {
 		redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking").clear();
 
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() + "market:info");
 		RBatch batch = redissonClient.createBatch();
 
 		for(Long tokenId : marketInfoMap.keySet()) {
@@ -153,8 +153,8 @@ public class MarketDataService {
 			dto.setChangeRate(BigDecimal.ZERO);
 
 			// 배치에 모아뒀다가
-			batch.getMap("market:info").putAsync(tokenId, dto);
-			batch.getTopic("market:update:topic").publishAsync(dto);
+			batch.getMap(redisKeyManager.getPrefix() + "market:info").putAsync(tokenId, dto);
+			batch.getTopic(redisKeyManager.getPrefix() + "market:update:topic").publishAsync(dto);
 			System.out.println("[MarketDataService] 9시 초기화 dto: " + dto.toString());
 		}
 		// 한 번에 redis로 전송

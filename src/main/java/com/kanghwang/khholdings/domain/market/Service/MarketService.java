@@ -37,7 +37,7 @@ public class MarketService {
 	public List<TokenListDTO> selectAll() {
 
 		// 1. Redis Map에서 실시간 데이터 조회
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() +"market:info");
 		List<TokenListDTO> list = new ArrayList<>(marketInfoMap.readAllValues());
 
 		if (list.isEmpty()) {

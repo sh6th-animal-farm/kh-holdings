@@ -15,6 +15,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 public class OpenDTO {
+	private Long tokenId;
 	private String tokenName;         // 토큰명
 	private String tickerSymbol;      // 종목 코드
 	private BigDecimal totalSupply;  // 총 발행량

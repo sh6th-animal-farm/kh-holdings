@@ -21,7 +21,8 @@
                 w.account_no,
                 w.cash_balance,
                 COALESCE(SUM(h.purchased_value), 0) AS total_purchased_value,
-                COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS total_market_value
+                COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS total_market_value,
+                w.frozen_amount
             FROM wallets w
                 LEFT JOIN holdings h ON w.wallet_id = h.wallet_id
                 LEFT JOIN latest_token_quotes ltq ON h.token_id = ltq.token_id
@@ -29,13 +30,14 @@
             GROUP BY w.wallet_id, w.bank_name, w.account_no, w.cash_balance
         )
         SELECT
-            bank_name AS bankName,
-            account_no AS accountNo,
-            cash_balance AS cashBalance,
-            total_purchased_value AS totalPurchasedValue,
-            total_market_value AS totalMarketValue,
+            bank_name,
+            account_no,
+            cash_balance,
+            total_purchased_value,
+            total_market_value,
             (cash_balance + total_market_value) AS totalBalance,
             (total_market_value - total_purchased_value) AS profitLoss,
+            frozen_amount,
             CASE
                 WHEN total_purchased_value = 0 THEN 0
                 ELSE (total_market_value - total_purchased_value) / total_purchased_value * 100

@@ -221,7 +221,7 @@ public class TradeWorker implements CommandLineRunner {
 
     private void initializeMarketInfo() {
         log.info("[TradeWorker] Redis에 토큰 리스트 초기화");
-        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getPrefix() + "market:info");
         List<TokenListDTO> tokens = marketRepository.selectAll();
 
         if (!marketInfoMap.isEmpty()) {
