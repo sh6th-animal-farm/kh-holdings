@@ -5,7 +5,6 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.concurrent.TimeUnit;
 
-import com.kanghwang.khholdings.domain.market.Service.MarketDataService;
 import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
@@ -13,6 +12,7 @@ import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
 import org.springframework.stereotype.Service;
 
+import com.kanghwang.khholdings.domain.market.Service.MarketDataService;
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
@@ -360,30 +360,30 @@ public class OrderRedisService {
 	}
 
 	// 주문 취소 (사용자가 직접)
-	public boolean cancelOrder(Long tokenId, Long orderId){
+	public void cancelOrder(Long tokenId, Long orderId) {
 		String orderInfoKey = redisKeyManager.getOrderInfoKey(tokenId);
 		RMap<Long, OrderRequestDTO> infoMap = redissonClient.getMap(orderInfoKey);
 
-		// 1. 주문 정보 확인 (이미 취소되었거나 없을 경우)
-		OrderRequestDTO orderInfo = infoMap.get(orderId); // 주문 정보 가져오기
+		// 1. 주문 정보 확인
+		OrderRequestDTO orderInfo = infoMap.get(orderId);
 		if (orderInfo == null) {
-			return false; // 이미 처리된 주문이거나 존재하지 않음
+			throw new IllegalArgumentException("이미 취소되었거나 존재하지 않는 주문입니다.");
 		}
 
-		try {
-			// 2. Redis 호가창 및 주문 상세에서 주문 제거
-			removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
+		// 2. Redis 작업 (호가창 및 주문 상세에서 제거)
+		removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
 
-			// 3. 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
-			RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), orderId, orderInfo.getRemainingCash(), orderInfo.getRemainingToken());
-			redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
-				.add(StreamAddArgs.entry("data", refundRequestDTO));
+		// 3. 비동기 정산용 Stream 저장
+		RefundRequestDTO refundRequestDTO = new RefundRequestDTO(
+			snowflakeIdGenerator.nextId(),
+			orderId,
+			orderInfo.getRemainingCash(),
+			orderInfo.getRemainingToken()
+		);
 
-			log.info("TradeWorker에 주문 취소 요청: OrderId {}", orderId);
-			return true;
-		} catch (Exception e) {
-			log.error("취소 처리 중 오류 발생: {}", e.getMessage());
-			return false;
-		}
+		redissonClient.getStream(redisKeyManager.getPrefix() + "trade:stream:")
+			.add(StreamAddArgs.entry("data", refundRequestDTO));
+
+		log.info("TradeWorker에 주문 취소 요청: OrderId {}", orderId);
 	}
 }

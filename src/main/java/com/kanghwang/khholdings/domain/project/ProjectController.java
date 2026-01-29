@@ -18,6 +18,7 @@
  import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
  import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
  import com.kanghwang.khholdings.global.dto.ApiResponse;
+ import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
  @RestController
  @RequestMapping("/api/project")
@@ -33,88 +34,53 @@
  											   @RequestParam Long walletId,
  											   @RequestParam BigDecimal amount) {
 
- 		try {
- 			Long txHistId = projectService.applySubscription(tokenId, subscriptionId, walletId, amount);
- 			return ResponseEntity.ok(ApiResponse.success("청약 신청이 완료되었습니다.", txHistId));
- 		} catch (RuntimeException e) {
- 			return ResponseEntity.badRequest().body(ApiResponse.error("청약 신청에 실패했습니다."));
- 		}
+		 Long data = projectService.applySubscription(tokenId, subscriptionId, walletId, amount);
+		 return  ApiResponseUtil.ok("청약 신청이 완료되었습니다.", data);
  	}
 
  	// 청약 취소
  	@PostMapping("/cancel/{transactionId}")
  	public ResponseEntity<ApiResponse<CancelDTO>> cancelSubscription(@PathVariable Long transactionId) {
-
- 		CancelDTO cancelDTO = projectService.cancelSubscription(transactionId);
-
- 		if (cancelDTO != null) {
- 			return ResponseEntity.ok(ApiResponse.success("청약 취소가 완료되었습니다.", cancelDTO));
- 		} else {
- 			return ResponseEntity.badRequest().body(ApiResponse.error("청약 취소에 실패했습니다."));
- 		}
-
+ 		CancelDTO data = projectService.cancelSubscription(transactionId);
+		return ApiResponseUtil.ok("청약 취소가 완료되었습니다.", data);
  	}
 
  	// 청약 정산 (당첨, 낙첨)
  	@PostMapping("/result/{tokenId}")
  	public ResponseEntity<ApiResponse<Void>> resultSubscription(@PathVariable Long tokenId, @RequestBody List<SubscriptionRequestDTO> subRequestList) {
-
- 		boolean isCompleted = projectService.resultSubscription(tokenId, subRequestList);
-
- 		if (isCompleted) {
- 			return ResponseEntity.ok(ApiResponse.error("청약 정산이 완료되었습니다."));
- 		} else {
- 			return ResponseEntity.badRequest().body(ApiResponse.error("청약 정산에 실패했습니다."));
- 		}
+ 		projectService.resultSubscription(tokenId, subRequestList);
+		return ApiResponseUtil.ok("청약 정산이 완료되었습니다.", null);
  	}
 
  	// 배당 스냅샷
  	@PostMapping("/dividend/before/{tokenId}")
  	public ResponseEntity<ApiResponse<List<SnapshotDTO>>> resultSnapshot(@PathVariable Long tokenId) {
-
  		List<SnapshotDTO> list = projectService.resultSnapshot(tokenId);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+		}
 
- 		if (list == null || list.isEmpty()) {
- 			return ResponseEntity.badRequest().body(ApiResponse.error("배당 스냅샷에 실패했습니다."));
- 		}
-		return ResponseEntity.ok(ApiResponse.success("배당 스냅샷이 완료되었습니다.", list));
+		return  ApiResponseUtil.ok("배당 스냅샷이 완료되었습니다.", list);
  	}
 
  	// 배당 정산
  	@PostMapping("/dividend/after/{tokenId}")
  	public ResponseEntity<ApiResponse<Void>> resultDividend(@PathVariable Long tokenId, @RequestBody List<DividendRequestDTO> divRequestList) {
-
- 		boolean isCompleted = projectService.resultDividend(tokenId, divRequestList);
-
- 		if (isCompleted) {
- 			return ResponseEntity.ok(ApiResponse.error("배당 정산이 완료되었습니다."));
- 		} else {
- 			return ResponseEntity.badRequest().body(ApiResponse.error("배당 정산에 실패했습니다."));
- 		}
+ 		projectService.resultDividend(tokenId, divRequestList);
+		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", null);
  	}
 
  	// 토큰 소각
  	@PostMapping("/close/{tokenId}")
  	public ResponseEntity<ApiResponse<Void>> burnToken(@PathVariable Long tokenId) {
-
- 		boolean isCompleted = projectService.burnToken(tokenId);
-
- 		if (isCompleted) {
- 			return ResponseEntity.ok(ApiResponse.error("토큰 소각 및 정산이 완료되었습니다."));
- 		} else {
- 			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 소각에 실패했습니다."));
- 		}
+		projectService.burnToken(tokenId);
+		return ApiResponseUtil.ok("토큰 소각 및 정산이 완료되었습니다.", null);
  	}
 
 	 // 토큰 발행
 	 @PostMapping("/open")
 	 public ResponseEntity<ApiResponse<Void>> openToken(@RequestBody OpenDTO openDTO) {
-
-		 boolean result = projectService.openToken(openDTO);
-
-		 if (!result) {
-			 return ResponseEntity.badRequest().body(ApiResponse.error("토큰 발행에 실패했습니다."));
-		 }
-		 return ResponseEntity.ok(ApiResponse.error("토큰 발행이 완료되었습니다."));
+		projectService.openToken(openDTO);
+		return ApiResponseUtil.ok("토큰 발행이 완료되었습니다.", null);
 	 }
  }

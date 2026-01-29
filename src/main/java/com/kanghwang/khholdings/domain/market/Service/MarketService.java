@@ -2,28 +2,25 @@ package com.kanghwang.khholdings.domain.market.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import com.kanghwang.khholdings.domain.market.MarketRepository;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
-import com.kanghwang.khholdings.global.dto.ApiResponse;
-import com.kanghwang.khholdings.global.util.RedisKeyManager;
-import lombok.RequiredArgsConstructor;
-import org.redisson.api.RBucket;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -84,5 +81,25 @@ public class MarketService {
 	// 미체결 내역 조회
 	public List<PendingDTO> selectPending(Long tokenId, Long walletId) {
 		return marketRepository.selectPending(tokenId, walletId);
+	}
+
+	// 현재가 조회
+	public BigDecimal getCurrentPrice(Long tokenId) { return marketRepository.selectLatestTokenPrice(tokenId); }
+
+	// 매수 호가 조회
+	public List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId) {
+		BigDecimal price = getCurrentPrice(tokenId);
+		return marketRepository.selectAllOrderBuyPrice(tokenId, price);
+	}
+
+	// 매도 호가 조회
+	public List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId) {
+		BigDecimal price = getCurrentPrice(tokenId);
+		return marketRepository.selectAllOrderSellPrice(tokenId, price);
+	}
+
+	// 체결 조회
+	public List<TradeDTO> selectAllTradePrice(Long tokenId) {
+		return marketRepository.selectAllTradePrice(tokenId);
 	}
 }
