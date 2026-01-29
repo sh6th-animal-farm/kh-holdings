@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
 import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
@@ -27,8 +28,8 @@ public class MarketController {
 	private MarketService marketService;
 
 	@GetMapping()
-	public ResponseEntity<ApiResponse<List<MarketDTO>>> selectAll() {
-		List<MarketDTO> list = marketService.selectAll();
+	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectAll() {
+		List<TokenListDTO> list = marketService.selectAll();
 		if (list == null) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
@@ -37,8 +38,8 @@ public class MarketController {
 	}
 
 	@GetMapping("/search")
-	public ResponseEntity<ApiResponse<List<MarketDTO>>> selectBySearch(@RequestParam(required = false) String content) {
-		List<MarketDTO> list = marketService.selectBySearch(content);
+	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectBySearch(@RequestParam(required = false) String content) {
+		List<TokenListDTO> list = marketService.selectBySearch(content);
 		if (list == null) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}

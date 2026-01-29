@@ -2,7 +2,12 @@ package com.kanghwang.khholdings.domain.order.bot;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import org.redisson.api.RMap;
+import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -25,13 +30,16 @@ import lombok.extern.slf4j.Slf4j;
 public class TradingSimulationBot {
 
 	private final OrderService orderService;
-
-	// 봇의 실행 상태를 저장
+	private final RedissonClient redissonClient;
 	private volatile boolean isRunning = false;
 
-	// 0.3초마다 주문
+	private final Long[] testWalletIds = {
+			1L, 2L, 3L, 4L, 5L,
+			6L, 7L, 8L, 9L, 10L
+	};
+
 	@Async
-	@Scheduled(fixedDelay = 300)
+	@Scheduled(fixedDelay = 500)
 	public void runSimulation() {
 		if (!isRunning) {
 			return;
@@ -57,24 +65,35 @@ public class TradingSimulationBot {
 	private OrderRequestDTO createRandomOrder() {
 		var random = java.util.concurrent.ThreadLocalRandom.current();
 
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		List<TokenListDTO> tokens = new ArrayList<>(marketInfoMap.readAllValues());
+
+		if (tokens.isEmpty()) {
+			log.warn(">>>> [BOT] 마켓 정보가 없어 주문을 생성할 수 없습니다.");
+			return null;
+		}
+
+		TokenListDTO targetToken = tokens.get(random.nextInt(tokens.size()));
+		BigDecimal currentPrice = targetToken.getMarketPrice();
+
+		if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) return null;
+
 		// 테스트용 데이터
-		Long[] testWalletIds = {111111L, 222222L, 333333L, 444444L, 555555L};
 		Long walletId = testWalletIds[random.nextInt(testWalletIds.length)];
-		Long tokenId = 777777L;
-
 		OrderSide side = random.nextBoolean() ? OrderSide.BUY : OrderSide.SELL;
-		// 지정가 주문 80 : 시장가 주문 20
-		OrderType type = (random.nextDouble() < 0.8) ? OrderType.LIMIT : OrderType.MARKET;
+		OrderType type = (random.nextDouble() < 0.7) ? OrderType.LIMIT : OrderType.MARKET;
 
-		BigDecimal price = BigDecimal.valueOf(100000 + (random.nextInt(5000)))
-			.setScale(0, RoundingMode.FLOOR);
+		// 가격 결정 로직: 현재가 기준 ±2% 범위 내에서 랜덤
+		double variation = 0.98 + (random.nextDouble() * 0.04);
+		BigDecimal orderPrice = currentPrice.multiply(BigDecimal.valueOf(variation))
+				.setScale(0, RoundingMode.HALF_UP);
 
-		BigDecimal volume = BigDecimal.valueOf(0.01 + (random.nextDouble() * 0.99))
-			.setScale(4, RoundingMode.DOWN);
+		BigDecimal volume = BigDecimal.valueOf(1 + (random.nextDouble() * 5.0))
+				.setScale(4, RoundingMode.DOWN);
 
 		var builder = OrderRequestDTO.builder()
 			.walletId(walletId)
-			.tokenId(tokenId)
+			.tokenId(targetToken.getTokenId())
 			.orderSide(side)
 			.orderType(type);
 
@@ -82,7 +101,7 @@ public class TradingSimulationBot {
 			if (side == OrderSide.BUY) {
 				builder.orderPrice(BigDecimal.ZERO);
 				builder.orderVolume(BigDecimal.ZERO);
-				builder.totalPrice(price.multiply(volume));
+				builder.totalPrice(orderPrice.multiply(volume));
 			} else {
 				builder.orderPrice(BigDecimal.ZERO);
 				builder.orderVolume(volume);
@@ -90,11 +109,11 @@ public class TradingSimulationBot {
 			}
 		} else {
 			if (side == OrderSide.BUY) {
-				builder.orderPrice(price);
+				builder.orderPrice(orderPrice);
 				builder.orderVolume(volume);
-				builder.totalPrice(price.multiply(volume));
+				builder.totalPrice(orderPrice.multiply(volume));
 			} else {
-				builder.orderPrice(price);
+				builder.orderPrice(orderPrice);
 				builder.orderVolume(volume);
 				builder.totalPrice(BigDecimal.ZERO);
 			}

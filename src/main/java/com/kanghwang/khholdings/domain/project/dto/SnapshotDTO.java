@@ -17,5 +17,5 @@ public class SnapshotDTO {
     private Long userId;				// 유저 아이디
     private Long walletId;			    // 지갑 번호
     private Long tokenId;		        // 토큰 번호
-    private BigDecimal totalBalance;    // 토큰 보유 수량
+    private BigDecimal tokenBalance;    // 토큰 보유 수량
 }
