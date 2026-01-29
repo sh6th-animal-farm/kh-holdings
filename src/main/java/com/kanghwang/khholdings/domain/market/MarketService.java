@@ -1,13 +1,16 @@
 package com.kanghwang.khholdings.domain.market;
 
+import java.math.BigDecimal;
 import java.util.List;
 
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 
 @Service
 public class MarketService {
@@ -16,13 +19,33 @@ public class MarketService {
 	private MarketRepository marketRepository;
 
 	// 종목 전체 조회
-	public List<MarketDTO> selectAll() {
+	public List<TokenListDTO> selectAll() {
 		return marketRepository.selectAll();
 	}
 
 	// 종목 검색어 조회
-	public List<MarketDTO> selectBySearch(String content) {
+	public List<TokenListDTO> selectBySearch(String content) {
 		return marketRepository.selectBySearch(content);
+	}
+
+	// 현재가 조회
+	public BigDecimal getCurrentPrice(Long tokenId) { return marketRepository.selectLatestTokenPrice(tokenId); }
+
+	// 매수 호가 조회
+	public List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId) {
+		BigDecimal price = getCurrentPrice(tokenId);
+		return marketRepository.selectAllOrderBuyPrice(tokenId, price);
+	}
+
+	// 매도 호가 조회
+	public List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId) {
+		BigDecimal price = getCurrentPrice(tokenId);
+		return marketRepository.selectAllOrderSellPrice(tokenId, price);
+	}
+
+	// 체결 조회
+	public List<TradeDTO> selectAllTradePrice(Long tokenId) {
+		return marketRepository.selectAllTradePrice(tokenId);
 	}
 
 	// 차트 조회

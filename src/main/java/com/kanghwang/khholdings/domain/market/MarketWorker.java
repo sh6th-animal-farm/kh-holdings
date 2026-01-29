@@ -1,11 +1,13 @@
 package com.kanghwang.khholdings.domain.market;
 
 import org.redisson.api.RPatternTopic;
+import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
@@ -52,20 +54,44 @@ public class MarketWorker {
 
 			messagingTemplate.convertAndSend("/topic/orders/" + tokenId, event);
 
-			System.out.println("[MarketWorker] WebSocket 호가: " + event.getSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getUpdatedVolume() + " (" + event.getAction() + ")");
+			System.out.println("[MarketWorker] -> [/topic/orders/] WebSocket 호가: " + event.getSide() + " " + tokenId + " 가격 " + event.getPrice() + ", 수량 " + event.getUpdatedVolume() + " (" + event.getAction() + ")");
 		});
 
 		// [차트]
 		RPatternTopic candleTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "candle:topic:*");
 
 		// 리스너 타입을 candleDTO로 명시
-		candleTopic.addListener(CandleDTO.class, (pattern, channel, msg) -> {
+		candleTopic.addListener(CandleDTO.class, (pattern, channel, event) -> {
 			String[] parts = channel.toString().split(":");
 			String tokenId = parts[parts.length - 1];
 
-			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, msg);
+			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
 
-			System.out.println("[MarketWorker] WebSocket : OHLCV 및 차트 업데이트 " + msg);
+			System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
+					+ ", 시가: " + event.getOpeningPrice()
+					+ ", 고가: " + event.getHighPrice()
+					+ ", 저가: " + event.getLowPrice()
+					+ ", 종가: " + event.getClosingPrice()
+					+ ", 거래량: " + event.getTradeVolume()
+					+ ", 캔들 시간: " + event.getCandleTime());
+
+		});
+
+		// [전체 토큰 리스트]
+		RTopic tokenListTopic = redissonClient.getTopic(redisKeyManager.getPrefix() + "market:update:topic");
+
+		tokenListTopic.addListener(TokenListDTO.class, (channel, event) -> {
+			messagingTemplate.convertAndSend("/topic/tokenList", event);
+
+			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
+					+ " 토큰명: " + event.getTokenName()
+					+ ", 현재가: " + event.getMarketPrice()
+					+ ", 시가: " + event.getOpenPrice()
+					+ ", 고가: " + event.getHighPrice()
+					+ ", 저가: " + event.getLowPrice()
+					+ ", 등락률: " + event.getChangeRate() + "%"
+					+ ", 누적 거래량: " + event.getDailyTradeVolume()
+					);
 		});
 	}
 }
