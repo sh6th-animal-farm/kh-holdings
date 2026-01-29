@@ -89,9 +89,9 @@ public class MarketController {
 	@GetMapping("/candles/{tokenId}")
 	public ResponseEntity<ApiResponse<List<String>>> selectCandles(
             @PathVariable Long tokenId,
-			@RequestParam int unit,
-			@RequestParam long start,
-			@RequestParam long end
+			@RequestParam(defaultValue = "1") int unit,
+			@RequestParam(defaultValue = "0") long start,
+			@RequestParam(defaultValue = "9999999999") long end
 	) {
 		List<String> list = marketService.selectCandles(tokenId, unit, start, end);
 		if (list.isEmpty()) {
