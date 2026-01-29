@@ -200,7 +200,7 @@ public class ProjectService {
 
 		for (SnapshotDTO holder : holders) {
 
-			BigDecimal amount = holder.getTotalBalance();          // 토큰 보유 수량
+			BigDecimal amount = holder.getTokenBalance();          // 토큰 보유 수량
 			BigDecimal cashAmount = amount.multiply(currentPrice); // 시세를 기준으로 환전
 
 			Long txId1 = snowflakeIdGenerator.nextId();

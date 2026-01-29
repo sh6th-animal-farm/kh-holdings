@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.concurrent.TimeUnit;
 
+import com.kanghwang.khholdings.domain.market.Service.MarketDataService;
 import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
@@ -34,6 +35,7 @@ public class OrderRedisService {
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
 	private final RedissonClient redissonClient;
 	private final RedisKeyManager redisKeyManager;
+	private final MarketDataService marketDataService;
 	private static final BigDecimal F_RATE = new BigDecimal("0.0006"); // 수수료 관리
 
 	public void processOrder(OrderRequestDTO myOrderDTO) {
@@ -44,11 +46,11 @@ public class OrderRedisService {
 
 		try {
 			// 최대 2초 대기, 10초간 잠금 (10초 초과 시 자동으로 unlock)
-			if (lock.tryLock(2, 10, TimeUnit.SECONDS)) {
+			if (lock.tryLock(5, 10, TimeUnit.SECONDS)) {
 				try {
 					executeMatching(myOrderDTO);
 				} finally {
-					if (lock.isHeldByCurrentThread()) {
+					if (lock.isLocked() && lock.isHeldByCurrentThread()) {
 						lock.unlock();
 					}
 				}
@@ -226,6 +228,9 @@ public class OrderRedisService {
 			// Redis에 해당 토큰의 마지막 체결가를 저장
 			redissonClient.getBucket(redisKeyManager.getPrefix() + "ticker:last_price:" + myOrderDTO.getTokenId())
 				.set(targetPrice);
+
+			// 1분 봉 제작, 토큰 실시간 리스트 제작
+			marketDataService.processMarketUpdate(transactionDTO);
 
 			log.info("체결: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
 			log.info("Worker에게 나머지 작업 전달: TradeID {}", tradeId);
