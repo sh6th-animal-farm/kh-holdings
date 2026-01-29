@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.Service.MarketService;
 import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.stereotype.Service;
@@ -40,10 +41,11 @@ public class ProjectService {
 		// 2. 해시값 생성
 		String hashValue = DigestUtils.sha256Hex(transactionId.toString() + walletId.toString());
 
+		// 3. 청약 신청
 		Long txHistId = projectRepository.applySubscription(transactionId, tokenId, subscriptionId, walletId, amount,
 				hashValue);
 
-		// 3. 결과 검증
+		// 4. 결과 검증
 		if (txHistId == null) {
 			throw new RuntimeException("청약 신청에 실패했습니다.");
 		}
@@ -61,21 +63,29 @@ public class ProjectService {
 		// 2. 해시값 생성
 		String hashValue = DigestUtils.sha256Hex(transactionId.toString());
 
-		return projectRepository.cancelSubscription(transactionId, newTransactionId, hashValue);
+		// 3. 청약 취소
+		CancelDTO cancelDTO = projectRepository.cancelSubscription(transactionId, newTransactionId, hashValue);
+
+		// 4. 결과 검증
+		if (cancelDTO == null) {
+			throw new IllegalArgumentException("이미 취소되었거나 취소할 수 없는 청약 건입니다.");
+		}
+
+		return cancelDTO;
 	}
 
 	// 청약 정산 (당첨, 낙첨)
 	@Transactional
-	public boolean resultSubscription(Long tokenId, List<SubscriptionRequestDTO> subRequestList) {
+	public void resultSubscription(Long tokenId, List<SubscriptionRequestDTO> subscriptionReqList) {
 
-		if (subRequestList == null || subRequestList.size() == 0) {
-			return false;
+		if (subscriptionReqList == null || subscriptionReqList.size() == 0) {
+			throw new IllegalArgumentException("정산할 내역이 존재하지 않습니다.");
 		}
 
 		int BATCH_SIZE = 1000;
 		List<SubscriptionDTO> batchBuffer = new ArrayList<>();
 
-		for (SubscriptionRequestDTO subRequestDTO : subRequestList) {
+		for (SubscriptionRequestDTO subRequestDTO : subscriptionReqList) {
 
 			// 1. Snowflake ID 생성
 			Long passTxId = snowflakeIdGenerator.nextId();
@@ -109,29 +119,21 @@ public class ProjectService {
 		if (!batchBuffer.isEmpty()) {
 			projectRepository.resultSubscription(batchBuffer);
 		}
-
-		return true;
 	}
 
 	// 배당 스냅샷
 	@Transactional
 	public List<SnapshotDTO> resultSnapshot(Long tokenId) {
-
 		List<SnapshotDTO> list = projectRepository.resultSnapshot(tokenId);
-
-		if (list != null && !list.isEmpty()) {
-			projectRepository.insertSnapshot(list);
-		}
-
 		return list;
 	}
 
 	// 배당 정산
 	@Transactional
-	public boolean resultDividend(Long tokenId, List<DividendRequestDTO> divRequestList) {
+	public void resultDividend(Long tokenId, List<DividendRequestDTO> divRequestList) {
 
 		if (divRequestList == null || divRequestList.size() == 0) {
-			return false;
+			throw new IllegalArgumentException("정산할 내역이 존재하지 않습니다.");
 		}
 
 		int BATCH_SIZE = 1000;
@@ -163,35 +165,32 @@ public class ProjectService {
 		if (!batchBuffer.isEmpty()) {
 			projectRepository.resultDividend(batchBuffer);
 		}
-
-		return true;
 	}
 
 	// 토큰 소각
 	@Transactional
-	public boolean burnToken(Long tokenId) {
+	public void burnToken(Long tokenId) {
 
 		// 토큰 존재 여부 확인
 		Map<String, Object> tokenStatus = projectRepository.checkTokenStatus(tokenId);
 
 		if (tokenStatus == null) {
-			throw new RuntimeException("존재하지 않는 토큰입니다.");
+			throw new IllegalArgumentException("존재하지 않는 토큰입니다.");
 		}
 
 		if (tokenStatus.get("deleted_at") != null) {
-			throw new RuntimeException("이미 소각 처리된 토큰입니다.");
+			throw new IllegalArgumentException("이미 소각 처리된 토큰입니다.");
 		}
 
 		// 1. 단가 조회
-		BigDecimal currentPrice = marketRepository.selectLatestTokenPrice(tokenId);
-		if (currentPrice == null) {
-			throw new RuntimeException("현재 시세를 찾을 수 없습니다.");
-		}
+		BigDecimal currentPrice = Optional.ofNullable(marketRepository.selectLatestTokenPrice(tokenId))
+			.or(() -> Optional.ofNullable(projectRepository.getIssuePrice(tokenId)))
+			.orElseThrow(() -> new IllegalArgumentException("현재 시세를 찾을 수 없습니다."));
 
 		// 2. 대상자 조회
 		List<SnapshotDTO> holders = projectRepository.resultSnapshot(tokenId);
 		if (holders == null || holders.isEmpty()) {
-			throw new RuntimeException("토큰 보유 대상자가 없습니다.");
+			throw new IllegalArgumentException("토큰 보유 대상자가 없습니다.");
 		}
 
 		// 3. batch 처리
@@ -224,7 +223,6 @@ public class ProjectService {
 				projectRepository.burnTokenBatch(list);
 				list.clear();
 			}
-
 		}
 
 		// 남은 데이터 처리
@@ -234,12 +232,13 @@ public class ProjectService {
 
 		// 토큰 삭제
 		projectRepository.deleteToken(tokenId);
-
-		return true;
 	}
 
 	// 토큰 발행
-	public boolean openToken(OpenDTO openDTO){
-		return projectRepository.openToken(openDTO) > 0;
+	public void openToken(OpenDTO openDTO){
+		int result = projectRepository.openToken(openDTO);
+		if (result <= 0) {
+			throw new IllegalArgumentException("토큰 발행에 실패했습니다.");
+		}
 	}
 }
