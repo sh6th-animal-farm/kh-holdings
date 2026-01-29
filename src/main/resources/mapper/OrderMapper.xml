@@ -6,7 +6,7 @@
     <!-- 특정 토큰 보유 수량 조회 -->
     <select id="selectHoldingTokenBalance" parameterType="Long" resultType="bigdecimal">
         SELECT
-            COALESCE(token_balance, 0)
+            COALESCE(token_balance - reserved, 0)
         FROM
             holdings
         WHERE
