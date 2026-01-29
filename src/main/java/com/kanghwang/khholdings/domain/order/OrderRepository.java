@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;

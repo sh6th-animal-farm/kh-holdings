@@ -18,12 +18,10 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 
 @Slf4j
 @Service
@@ -83,7 +81,7 @@ public class MarketService {
 	}
 
 	// 차트 조회
-	public List<String> selectCandles(Long tokenId, String unit, long start, long end) {
+	public List<String> selectCandles(Long tokenId, int unit, long start, long end) {
 
 		String redisKey = String.format("candles:%s:%d", unit, tokenId);
 		RScoredSortedSet<String> zset = redissonClient.getScoredSortedSet(redisKey);

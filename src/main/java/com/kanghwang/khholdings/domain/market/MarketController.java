@@ -16,7 +16,6 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
@@ -90,7 +89,7 @@ public class MarketController {
 	@GetMapping("/candles/{tokenId}")
 	public ResponseEntity<ApiResponse<List<String>>> selectCandles(
             @PathVariable Long tokenId,
-			@RequestParam(defaultValue = "1m") String unit,
+			@RequestParam int unit,
 			@RequestParam long start,
 			@RequestParam long end
 	) {

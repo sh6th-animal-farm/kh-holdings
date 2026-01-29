@@ -7,16 +7,14 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
-import com.kanghwang.khholdings.domain.market.type.UnitEnum;
 import org.redisson.api.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.order.OrderRepository;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
@@ -117,7 +115,7 @@ public class MarketDataService {
 
 			CandleDTO liveCandle = CandleDTO.builder()
 				.tokenId(trade.getTokenId())
-				.unit(UnitEnum.MIN_1.getMinutes())
+				.unit(1)
 				.candleTime(minute)
 				.openingPrice(new BigDecimal(candleMap.get("open")))
 				.highPrice(new BigDecimal(candleMap.get("high")))
@@ -202,7 +200,7 @@ public class MarketDataService {
 
 				CandleDTO candle = CandleDTO.builder()
 					.tokenId(tokenId)
-					.unit(UnitEnum.MIN_1.getMinutes())
+					.unit(1)
 					.candleTime(lastMinute)
 					.openingPrice(new BigDecimal(raw.get("open")))
 					.highPrice(new BigDecimal(raw.get("high")))

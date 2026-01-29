@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PostConstruct;

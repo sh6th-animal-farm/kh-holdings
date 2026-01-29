@@ -1,11 +1,9 @@
-package com.kanghwang.khholdings.domain.order.dto;
+package com.kanghwang.khholdings.domain.market.dto;
 
-import com.kanghwang.khholdings.domain.market.type.UnitEnum;
 import lombok.*;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 
 
 @Getter
@@ -15,7 +13,7 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 public class CandleDTO implements Serializable {
     private Long tokenId;               // 토큰 고유 번호
-    private UnitEnum unit;                   // unit (1분봉이면 1)
+    private int unit;                   // unit (1분봉이면 1)
     private Long candleTime;            // 캔들 기준 시간, TrainingView 연동을 위해 Long 사용
     private BigDecimal openingPrice;    // 시가
     private BigDecimal highPrice;       // 고가
