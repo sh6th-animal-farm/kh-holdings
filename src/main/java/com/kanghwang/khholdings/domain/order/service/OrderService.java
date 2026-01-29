@@ -74,7 +74,7 @@ public class OrderService {
 	}
 
 	// 주문 취소
-	public boolean cancelOrder(Long tokenId, Long orderId) {
-		return orderRedisService.cancelOrder(tokenId, orderId);
+	public void cancelOrder(Long tokenId, Long orderId) {
+		orderRedisService.cancelOrder(tokenId, orderId);
 	}
 }

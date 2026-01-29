@@ -1,13 +1,14 @@
 package com.kanghwang.khholdings.domain.my;
 
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
 import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class MyService {
@@ -16,7 +17,7 @@ public class MyService {
 	private MyRepository myRepository;
 
 	// 특정 계좌 및 지갑 조회
-	public List<WalletDTO> selectWalletById(Long walletId){
+	public WalletDTO selectWalletById(Long walletId){
 		return myRepository.selectWalletById(walletId);
 	}
 

@@ -309,4 +309,12 @@
         FROM tokens
         WHERE token_id = #{tokenId}
     </select>
+
+    <select id="getIssuePrice">
+        -- 토큰 발행가 조회
+        SELECT
+            issue_price
+        FROM tokens
+        WHERE token_id = #{tokenId}
+    </select>
 </mapper>
