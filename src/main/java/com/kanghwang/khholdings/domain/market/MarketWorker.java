@@ -1,5 +1,6 @@
 package com.kanghwang.khholdings.domain.market;
 
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RPatternTopic;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
@@ -15,6 +16,7 @@ import com.kanghwang.khholdings.global.util.RedisKeyManager;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MarketWorker {
@@ -60,21 +62,26 @@ public class MarketWorker {
 		// [차트]
 		RPatternTopic candleTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "candle:topic:*");
 
-		// 리스너 타입을 candleDTO로 명시
-		candleTopic.addListener(CandleDTO.class, (pattern, channel, event) -> {
-			String[] parts = channel.toString().split(":");
-			String tokenId = parts[parts.length - 1];
+		// [이전] 리스너 타입을 candleDTO로 명시
+		// [수정] String.class로 받음 (직렬화 오버헤드 최소화)
+		candleTopic.addListener(String.class, (pattern, channel, csvData) -> {
+			try {
+				String channelStr = channel.toString();
+				String tokenId = channelStr.substring(channelStr.lastIndexOf(":") + 1);
 
-			messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
+				messagingTemplate.convertAndSend("/topic/candles/" + tokenId, csvData);
 
-			System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
-					+ ", 시가: " + event.getOpeningPrice()
-					+ ", 고가: " + event.getHighPrice()
-					+ ", 저가: " + event.getLowPrice()
-					+ ", 종가: " + event.getClosingPrice()
-					+ ", 거래량: " + event.getTradeVolume()
-					+ ", 캔들 시간: " + event.getCandleTime());
-
+				System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트: " + csvData);
+//			System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
+//					+ ", 시가: " + event.getOpeningPrice()
+//					+ ", 고가: " + event.getHighPrice()
+//					+ ", 저가: " + event.getLowPrice()
+//					+ ", 종가: " + event.getClosingPrice()
+//					+ ", 거래량: " + event.getTradeVolume()
+//					+ ", 캔들 시간: " + event.getCandleTime());
+			} catch (Exception e) {
+				log.error("[MarketWorker] OHLCV 및 차트 업데이트 송신 오류: ", e);
+			}
 		});
 
 		// [전체 토큰 리스트]
@@ -86,11 +93,8 @@ public class MarketWorker {
 			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
 					+ " 토큰명: " + event.getTokenName()
 					+ ", 현재가: " + event.getMarketPrice()
-					+ ", 시가: " + event.getOpenPrice()
-					+ ", 고가: " + event.getHighPrice()
-					+ ", 저가: " + event.getLowPrice()
 					+ ", 등락률: " + event.getChangeRate() + "%"
-					+ ", 누적 거래량: " + event.getDailyTradeVolume()
+					+ ", 거래대금: " + event.getDailyTradeVolume()
 					);
 		});
 	}

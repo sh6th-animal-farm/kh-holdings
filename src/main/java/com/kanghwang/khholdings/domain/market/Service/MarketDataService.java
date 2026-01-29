@@ -7,12 +7,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
-import org.redisson.api.BatchResult;
-import org.redisson.api.RBatch;
-import org.redisson.api.RMap;
-import org.redisson.api.RScript;
-import org.redisson.api.RedissonClient;
+import com.kanghwang.khholdings.domain.market.type.UnitEnum;
+import org.redisson.api.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -59,7 +57,7 @@ public class MarketDataService {
 		updateRedisCandle(trade);
 	}
 
-	// 1. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
+	// 2. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
 	public void updateMarketSnapshot(TransactionRequestDTO trade) {
 		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
 		TokenListDTO token = marketInfoMap.get(trade.getTokenId());
@@ -93,7 +91,7 @@ public class MarketDataService {
 		}
 	}
 
-	// 1분 봉 집계 로직
+	// 1분 봉 실시간 생성 및 Websocket 전송
 	public void updateRedisCandle(TransactionRequestDTO trade) {
 
 		// 1분 단위로 버킷팅 (ex: 12:05:33 -> 12:05:00
@@ -117,10 +115,9 @@ public class MarketDataService {
 		if (candleMap != null && !candleMap.isEmpty()) {
 			String topicKey = redisKeyManager.getCandleTopicKey(trade.getTokenId());
 
-			// 시간은 프론트엔드에서 한국 시간으로 변경 예정
 			CandleDTO liveCandle = CandleDTO.builder()
 				.tokenId(trade.getTokenId())
-				.unit(1)
+				.unit(UnitEnum.MIN_1.getMinutes())
 				.candleTime(minute)
 				.openingPrice(new BigDecimal(candleMap.get("open")))
 				.highPrice(new BigDecimal(candleMap.get("high")))
@@ -131,7 +128,7 @@ public class MarketDataService {
 
 			// [MarketWoker - 차트]
 			// DTO 자체를 Redis Topic으로 발행 (MarketWorker가 받음)
-			redissonClient.getTopic(topicKey).publish(liveCandle);
+			redissonClient.getTopic(topicKey).publish(liveCandle.toCsv());
 		}
 	}
 
@@ -205,7 +202,7 @@ public class MarketDataService {
 
 				CandleDTO candle = CandleDTO.builder()
 					.tokenId(tokenId)
-					.unit(1)
+					.unit(UnitEnum.MIN_1.getMinutes())
 					.candleTime(lastMinute)
 					.openingPrice(new BigDecimal(raw.get("open")))
 					.highPrice(new BigDecimal(raw.get("high")))
@@ -217,9 +214,20 @@ public class MarketDataService {
 				candleList.add(candle);
 			}
 
-			// 5. DB에 한꺼번에 저장
+			// 5. 1분 봉 저장
 			if (!candleList.isEmpty()) {
+				// DB에 저장
 				orderRepository.insertCandlesBatch(candleList);
+
+				// Redis에 저장
+				for (CandleDTO candle : candleList) {
+					String zsetKey = "candle:1m:" + candle.getTokenId();
+					RScoredSortedSet<String> zset = redissonClient.getScoredSortedSet(zsetKey);
+					zset.add((double)candle.getCandleTime(), candle.toCsv());
+					zset.removeRangeByRank(0, -1001);
+					// zset.expire(24, TimeUnit.HOURS);
+				}
+
 				log.info("[TradeWorker - Sync] {} 시점의 1분 봉 {}건을 DB로 저장 완료", lastMinute, candleList.size());
 			}
 

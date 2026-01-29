@@ -33,7 +33,7 @@ public interface MarketRepository {
 	List<TradeDTO> selectAllTradePrice(Long tokenId);
 
 	// 차트 조회
-	List<CandleDTO> selectCandles(Long tokenId, int unit, int limit);
+	List<CandleDTO> selectCandles(Long tokenId, String unit, long start, long end);
 
 	// 미체결 내역 조회
 	List<PendingDTO> selectPending(Long tokenId, Long walletId);

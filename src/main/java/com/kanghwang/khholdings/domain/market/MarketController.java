@@ -88,12 +88,13 @@ public class MarketController {
 	}
 
 	@GetMapping("/candles/{tokenId}")
-	public ResponseEntity<ApiResponse<List<CandleDTO>>> selectCandles(
+	public ResponseEntity<ApiResponse<List<String>>> selectCandles(
             @PathVariable Long tokenId,
-			@RequestParam(defaultValue = "1") int unit,
-			@RequestParam(defaultValue = "200") int limit) {
-
-		List<CandleDTO> list = marketService.selectCandles(tokenId, unit, limit);
+			@RequestParam(defaultValue = "1m") String unit,
+			@RequestParam long start,
+			@RequestParam long end
+	) {
+		List<String> list = marketService.selectCandles(tokenId, unit, start, end);
 		if (list.isEmpty()) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}

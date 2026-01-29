@@ -2,6 +2,7 @@ package com.kanghwang.khholdings.domain.order.dto;
 
 import lombok.*;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
@@ -11,14 +12,24 @@ import java.time.OffsetDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CandleDTO {
+public class CandleDTO implements Serializable {
     private Long tokenId;               // 토큰 고유 번호
-    private Integer unit;               // unit (1분봉이면 1)
+    private int unit;                   // unit (1분봉이면 1)
     private Long candleTime;            // 캔들 기준 시간, TrainingView 연동을 위해 Long 사용
-
     private BigDecimal openingPrice;    // 시가
     private BigDecimal highPrice;       // 고가
     private BigDecimal lowPrice;        // 저가
     private BigDecimal closingPrice;    // 종가
     private BigDecimal tradeVolume;     // 거래량
+
+    public String toCsv() {
+        return String.format("%d,%d,%s,%s,%s,%s,%s",
+                candleTime,
+                unit,
+                openingPrice.toPlainString(),
+                highPrice.toPlainString(),
+                lowPrice.toPlainString(),
+                closingPrice.toPlainString(),
+                tradeVolume.toPlainString());
+    }
 }
