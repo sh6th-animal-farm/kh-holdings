@@ -1,11 +1,8 @@
 package com.kanghwang.khholdings.domain.market;
 
-import java.util.Collections;
+import java.math.BigDecimal;
 import java.util.List;
 
-import com.kanghwang.khholdings.domain.market.Service.MarketService;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,11 +11,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.dto.MarketDTO;
+import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
+import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
-@Slf4j
 @RestController
 @RequestMapping("/api/market")
 public class MarketController {
@@ -26,31 +27,64 @@ public class MarketController {
 	@Autowired
 	private MarketService marketService;
 
-	// 전체 토큰 목록(시세) 조회
 	@GetMapping()
 	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectAll() {
-
-		long start = System.currentTimeMillis();
-		log.info("API 시작");
-
 		List<TokenListDTO> list = marketService.selectAll();
-
-		if (list == null || list.isEmpty()) {
-			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 종목 조회에 실패했습니다."));
+		if (list == null) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
 
-		log.info("로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start));
-		return ResponseEntity.ok(ApiResponse.success("토큰 종목 조회에 성공했습니다.", list));
+		return ApiResponseUtil.ok("토큰 종목 조회에 성공했습니다.", list);
 	}
 
 	@GetMapping("/search")
 	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectBySearch(@RequestParam(required = false) String content) {
 		List<TokenListDTO> list = marketService.selectBySearch(content);
-
-		if (list == null || list.isEmpty()) {
-			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 종목 검색에 실패했습니다."));
+		if (list == null) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
-		return ResponseEntity.ok(ApiResponse.success("토큰 종목 검색에 성공했습니다.", list));
+
+		return ApiResponseUtil.ok("토큰 종목 검색에 성공했습니다.", list);
+	}
+
+	@GetMapping("/current/{tokenId}")
+	public ResponseEntity<ApiResponse<BigDecimal>> getCurrentPrice(@PathVariable("tokenId") Long tokenId) {
+		BigDecimal curPrice = marketService.getCurrentPrice(tokenId);
+		if (curPrice == null) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.", null);
+		}
+
+		return ApiResponseUtil.ok("토큰 현재가 조회에 성공했습니다.", curPrice);
+	}
+
+	@GetMapping("/order/buy/{tokenId}")
+	public ResponseEntity<ApiResponse<List<OrderPriceDTO>>> selectAllOrderBuyPrice(@PathVariable Long tokenId) {
+		List<OrderPriceDTO> list = marketService.selectAllOrderBuyPrice(tokenId);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+		}
+
+		return  ApiResponseUtil.ok("매수 호가 조회에 성공했습니다.", list);
+	}
+
+	@GetMapping("/order/sell/{tokenId}")
+	public ResponseEntity<ApiResponse<List<OrderPriceDTO>>> selectAllOrderSellPrice(@PathVariable Long tokenId) {
+		List<OrderPriceDTO> list = marketService.selectAllOrderSellPrice(tokenId);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+		}
+
+		return  ApiResponseUtil.ok("매도 호가 조회에 성공했습니다.", list);
+	}
+
+	@GetMapping("/trade/{tokenId}")
+	public ResponseEntity<ApiResponse<List<TradeDTO>>> selectAllTradePrice(@PathVariable Long tokenId) {
+		List<TradeDTO> list = marketService.selectAllTradePrice(tokenId);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+		}
+
+		return  ApiResponseUtil.ok("체결 조회에 성공했습니다.", list);
 	}
 
 	@GetMapping("/candles/{tokenId}")
@@ -60,21 +94,20 @@ public class MarketController {
 			@RequestParam(defaultValue = "200") int limit) {
 
 		List<CandleDTO> list = marketService.selectCandles(tokenId, unit, limit);
-
-		if (list == null || list.isEmpty()) {
-			// 거래가 없었던 데이터라면 잘못된 요청이 아니라서 빈 리스트 반환
-			return ResponseEntity.ok(ApiResponse.success("데이터가 없습니다.", Collections.emptyList()));
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
-		return ResponseEntity.ok(ApiResponse.success("차트 조회에 성공했습니다.", list));
+
+		return  ApiResponseUtil.ok("차트 조회에 성공했습니다.", list);
   }
     
-	@GetMapping("/{tokenId}/pending")
-	public ResponseEntity<ApiResponse<List<PendingDTO>>> selectPending(@PathVariable Long tokenId, @RequestParam Long walletId) {
+	@GetMapping("/{tokenId}/pending/{walletId}")
+	public ResponseEntity<ApiResponse<List<PendingDTO>>> selectPending(@PathVariable Long tokenId, @PathVariable Long walletId) {
 		List<PendingDTO> list = marketService.selectPending(tokenId, walletId);
-
-		if (list == null || list.isEmpty()) {
-			return ResponseEntity.badRequest().body(ApiResponse.error("미체결 내역이 존재하지 않습니다."));
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
-		return ResponseEntity.ok(ApiResponse.success("미체결 내역 조회에 성공했습니다.", list));
+
+		return  ApiResponseUtil.ok("미체결 내역 조회에 성공했습니다.", list);
 	}
 }
