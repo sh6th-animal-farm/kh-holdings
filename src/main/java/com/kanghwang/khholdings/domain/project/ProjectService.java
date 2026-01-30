@@ -19,6 +19,7 @@ import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
 import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
+import com.kanghwang.khholdings.domain.project.dto.SubscriptionResultDTO;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
 import lombok.RequiredArgsConstructor;
@@ -76,7 +77,7 @@ public class ProjectService {
 
 	// 청약 정산 (당첨, 낙첨)
 	@Transactional
-	public void resultSubscription(Long tokenId, List<SubscriptionRequestDTO> subscriptionReqList) {
+	public List<SubscriptionResultDTO> resultSubscription(Long tokenId, List<SubscriptionRequestDTO> subscriptionReqList) {
 
 		if (subscriptionReqList == null || subscriptionReqList.size() == 0) {
 			throw new IllegalArgumentException("정산할 내역이 존재하지 않습니다.");
@@ -84,6 +85,7 @@ public class ProjectService {
 
 		int BATCH_SIZE = 1000;
 		List<SubscriptionDTO> batchBuffer = new ArrayList<>();
+		List<SubscriptionResultDTO> subList = new ArrayList<>();
 
 		for (SubscriptionRequestDTO subRequestDTO : subscriptionReqList) {
 
@@ -109,6 +111,13 @@ public class ProjectService {
 				.build();
 
 			batchBuffer.add(subscriptionDTO);
+			subList.add(SubscriptionResultDTO.builder()
+				.walletId(subRequestDTO.getWalletId())
+				.passTxId(passTxId)
+				.failTxId(failTxId)
+				.passVolume(subRequestDTO.getPassVolume())
+				.passAmount(subRequestDTO.getPassPrice().multiply(subRequestDTO.getPassVolume()))
+				.build());
 
 			if (batchBuffer.size() >= BATCH_SIZE) {
 				projectRepository.resultSubscription(batchBuffer);
@@ -119,12 +128,17 @@ public class ProjectService {
 		if (!batchBuffer.isEmpty()) {
 			projectRepository.resultSubscription(batchBuffer);
 		}
+
+		return subList;
 	}
 
 	// 배당 스냅샷
 	@Transactional
 	public List<SnapshotDTO> resultSnapshot(Long tokenId) {
 		List<SnapshotDTO> list = projectRepository.resultSnapshot(tokenId);
+		if (list.size() > 0) {
+			projectRepository.insertSnapshot(list);
+		}
 		return list;
 	}
 
