@@ -5,16 +5,14 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
-import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
+import com.kanghwang.khholdings.domain.my.dto.MyTransactionHistDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
-import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
@@ -47,10 +45,14 @@ public class MyController {
 		return  ApiResponseUtil.ok("보유 토큰 조회에 성공했습니다.", list);
 	}
 
-	// 나의 거래 내역 조회(필터 조회, 기간 조회, 페이징)
-	@GetMapping("/transaction")
-	public ResponseEntity<ApiResponse<List<TransactionRequestDTO>>> selectTxHistByWalletId(@ModelAttribute TxHistsSearchDTO searchDTO){
-		List<TransactionRequestDTO> list = myService.selectTxHistByWalletId(searchDTO);
+	// 나의 거래 내역 조회 (카테고리, 기간, 페이징)
+	@GetMapping("/transaction/{walletId}")
+	public ResponseEntity<ApiResponse<List<MyTransactionHistDTO>>> selectMyTransactionHist(
+				@PathVariable Long walletId,
+				@RequestParam(defaultValue = "TOKEN") String category,
+				@RequestParam(defaultValue = "0") Integer period,
+				@RequestParam(defaultValue = "1") Integer page){
+		List<MyTransactionHistDTO> list = myService.selectMyTransactionHist(walletId, category, period, page);
 		if (list.isEmpty()) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}

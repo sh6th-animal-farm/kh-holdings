@@ -5,9 +5,8 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
-import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
+import com.kanghwang.khholdings.domain.my.dto.MyTransactionHistDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
-import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 
 @Mapper
 public interface MyRepository {
@@ -19,7 +18,11 @@ public interface MyRepository {
 	List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page);
 
 	// 거래 내역 조회(필터 조회, 기간 조회, 페이징)
-	List<TransactionRequestDTO> selectTxHistByWalletId(TxHistsSearchDTO searchDTO);
+	List<MyTransactionHistDTO> selectMyTransactionHist(
+			Long walletId,
+			String category,
+			Integer period,
+			Integer offset);
 
 	// 계좌 연동
 	Long selectAccount(Long userId);

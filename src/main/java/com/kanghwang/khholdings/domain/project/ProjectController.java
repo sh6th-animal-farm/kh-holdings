@@ -17,6 +17,7 @@
  import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
  import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
  import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
+ import com.kanghwang.khholdings.domain.project.dto.SubscriptionResultDTO;
  import com.kanghwang.khholdings.global.dto.ApiResponse;
  import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
@@ -47,9 +48,13 @@
 
  	// 청약 정산 (당첨, 낙첨)
  	@PostMapping("/result/{tokenId}")
- 	public ResponseEntity<ApiResponse<Void>> resultSubscription(@PathVariable Long tokenId, @RequestBody List<SubscriptionRequestDTO> subRequestList) {
- 		projectService.resultSubscription(tokenId, subRequestList);
-		return ApiResponseUtil.ok("청약 정산이 완료되었습니다.", null);
+ 	public ResponseEntity<ApiResponse<List<SubscriptionResultDTO>>> resultSubscription(@PathVariable Long tokenId, @RequestBody List<SubscriptionRequestDTO> subRequestList) {
+		List<SubscriptionResultDTO> list = projectService.resultSubscription(tokenId, subRequestList);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("정산할 내역이 존재하지 않습니다.");
+		}
+
+		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", list);
  	}
 
  	// 배당 스냅샷
