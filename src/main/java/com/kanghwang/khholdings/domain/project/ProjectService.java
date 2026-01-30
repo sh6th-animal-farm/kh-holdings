@@ -130,7 +130,7 @@ public class ProjectService {
 
 	// 배당 정산
 	@Transactional
-	public void resultDividend(Long tokenId, List<DividendRequestDTO> divRequestList) {
+	public List<CancelDTO> resultDividend(Long tokenId, List<DividendRequestDTO> divRequestList) {
 
 		if (divRequestList == null || divRequestList.size() == 0) {
 			throw new IllegalArgumentException("정산할 내역이 존재하지 않습니다.");
@@ -138,11 +138,18 @@ public class ProjectService {
 
 		int BATCH_SIZE = 1000;
 		List<DividendDTO> batchBuffer = new ArrayList<>();
+		List<CancelDTO> divList = new ArrayList<>();
 
 		for (DividendRequestDTO dividendRequestDTO : divRequestList) {
 
 			Long transactionId = snowflakeIdGenerator.nextId();
 			String hashValue = DigestUtils.sha256Hex(transactionId.toString());
+
+			divList.add(CancelDTO.builder()
+				.transactionId(transactionId)
+				.walletId(dividendRequestDTO.getWalletId())
+				.amount(dividendRequestDTO.getAfterTaxAmount())
+				.build());
 
 			DividendDTO dividendDTO = DividendDTO.builder()
 				.transactionId(transactionId)
@@ -165,6 +172,8 @@ public class ProjectService {
 		if (!batchBuffer.isEmpty()) {
 			projectRepository.resultDividend(batchBuffer);
 		}
+
+		return divList;
 	}
 
 	// 토큰 소각

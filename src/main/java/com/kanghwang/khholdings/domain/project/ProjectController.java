@@ -65,8 +65,12 @@
 
  	// 배당 정산
  	@PostMapping("/dividend/after/{tokenId}")
- 	public ResponseEntity<ApiResponse<Void>> resultDividend(@PathVariable Long tokenId, @RequestBody List<DividendRequestDTO> divRequestList) {
- 		projectService.resultDividend(tokenId, divRequestList);
+ 	public ResponseEntity<ApiResponse<List<CancelDTO>>> resultDividend(@PathVariable Long tokenId, @RequestBody List<DividendRequestDTO> divRequestList) {
+		List<CancelDTO> list = projectService.resultDividend(tokenId, divRequestList);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+		}
+
 		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", null);
  	}
 
