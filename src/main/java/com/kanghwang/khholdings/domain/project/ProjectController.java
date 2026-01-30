@@ -76,7 +76,7 @@
 			return ApiResponseUtil.ok("정산할 내역이 존재하지 않습니다.");
 		}
 
-		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", null);
+		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", list);
  	}
 
  	// 토큰 소각
