@@ -30,7 +30,7 @@ public class MyService {
 				String category,
 				Integer period,
 				Integer page){
-		Integer offset = (page - 1) * 10;
+		Integer offset = (page - 1) * 10; // offset만큼 건너뛰고 10개 조회
 		return myRepository.selectMyTransactionHist(walletId, category, period, offset);
 	}
 

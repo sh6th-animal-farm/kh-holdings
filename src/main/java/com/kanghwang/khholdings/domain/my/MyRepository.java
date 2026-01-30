@@ -18,11 +18,7 @@ public interface MyRepository {
 	List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page);
 
 	// 거래 내역 조회(필터 조회, 기간 조회, 페이징)
-	List<MyTransactionHistDTO> selectMyTransactionHist(
-			Long walletId,
-			String category,
-			Integer period,
-			Integer offset);
+	List<MyTransactionHistDTO> selectMyTransactionHist(Long walletId, String category, Integer period, Integer offset);
 
 	// 계좌 연동
 	Long selectAccount(Long userId);

@@ -19,13 +19,4 @@ public class MyTransactionHistDTO {
     private BigDecimal executedVolume; // 체결 수량
     private BigDecimal executedAmount; // 체결 총액
     private BigDecimal balanceAfter;   // 체결 후 잔액
-
-    // private Long walletId;
-    // private String category;
-    // private String period;
-    // private Integer page = 1;
-    //
-    // public int getOffset() {
-    //     return (this.page == null || this.page < 1) ? 0 : (this.page - 1) * 10;
-    // }
 }
