@@ -190,15 +190,18 @@
             high_price ,
             low_price,
             closing_price,
-            trade_volume
+            trade_volume,
+            unit
         FROM
             token_quotes
         WHERE
             token_id = #{tokenId}
         AND
-            unit = 1
+            unit = #{unit}
+        AND
+            candle_time BETWEEN TO_TIMESTAMP(#{start}) AND TO_TIMESTAMP(#{end})
         ORDER BY
             candle_time
-        LIMIT #{limit}
+        LIMIT 1000
     </select>
 </mapper>

@@ -16,7 +16,6 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
@@ -88,12 +87,13 @@ public class MarketController {
 	}
 
 	@GetMapping("/candles/{tokenId}")
-	public ResponseEntity<ApiResponse<List<CandleDTO>>> selectCandles(
+	public ResponseEntity<ApiResponse<List<String>>> selectCandles(
             @PathVariable Long tokenId,
 			@RequestParam(defaultValue = "1") int unit,
-			@RequestParam(defaultValue = "200") int limit) {
-
-		List<CandleDTO> list = marketService.selectCandles(tokenId, unit, limit);
+			@RequestParam(defaultValue = "0") long start,
+			@RequestParam(defaultValue = "9999999999") long end
+	) {
+		List<String> list = marketService.selectCandles(tokenId, unit, start, end);
 		if (list.isEmpty()) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}

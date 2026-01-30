@@ -2,11 +2,12 @@ package com.kanghwang.khholdings.domain.market.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
@@ -17,11 +18,12 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import lombok.RequiredArgsConstructor;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MarketService {
@@ -32,6 +34,9 @@ public class MarketService {
 
 	// 종목 전체 조회
 	public List<TokenListDTO> selectAll() {
+
+		long start = System.currentTimeMillis();
+		log.info("API 시작");
 
 		// 1. Redis Map에서 실시간 데이터 조회
 		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
@@ -65,6 +70,8 @@ public class MarketService {
 			return volB.compareTo(volA);
 		});
 
+		log.info("로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start));
+
 		return list == null ? new ArrayList<>() : list;
 	}
 
@@ -74,8 +81,51 @@ public class MarketService {
 	}
 
 	// 차트 조회
-	public List<CandleDTO> selectCandles(Long tokenId, int unit, int limit) {
-		return marketRepository.selectCandles(tokenId, unit, limit);
+	public List<String> selectCandles(Long tokenId, int unit, long start, long end) {
+
+		String redisKey = String.format("candles:%s:%d", unit, tokenId);
+		RScoredSortedSet<String> zset = redissonClient.getScoredSortedSet(redisKey);
+
+		// 1. redis 범위 조회 (Score : Timestamp)
+		Collection<String> cached = zset.valueRange(start, true, end, true);
+		if(!cached.isEmpty()) {
+			return new ArrayList<>(cached);
+		}
+
+		// 2. redis에 없을 시 DB 로드 및 redis에 저장
+		RLock lock = redissonClient.getLock("lock:" + redisKey);
+		try {
+			if (lock.tryLock(5, 10, TimeUnit.SECONDS)) {
+				// 재확인
+				cached = zset.valueRange(start, true, end, true);
+				if (!cached.isEmpty()) {
+					return new ArrayList<>(cached);
+				}
+
+				// DB 조회 및 CSV 변환
+				List<CandleDTO> dbData = marketRepository.selectCandles(tokenId, unit, start, end);
+				if (dbData.isEmpty()) {
+					return new ArrayList<>();
+				}
+
+				Map<String, Double> toCache = new HashMap<>();
+				for (CandleDTO candle : dbData) {
+					toCache.put(candle.toCsv(), (double)candle.getCandleTime());
+				}
+
+				zset.addAll(toCache);
+				return dbData.stream()
+						.map(CandleDTO::toCsv)
+						.toList();
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} finally {
+			if (lock.isHeldByCurrentThread()) {
+				lock.unlock();;
+			}
+		}
+		return new ArrayList<>();
 	}
 
 	// 미체결 내역 조회

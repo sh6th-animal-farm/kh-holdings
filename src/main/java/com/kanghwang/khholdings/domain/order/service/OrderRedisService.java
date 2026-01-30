@@ -226,10 +226,12 @@ public class OrderRedisService {
 
 			// (3) 현재가 갱신 (예: "ticker:last_price:{tokenId}")
 			// Redis에 해당 토큰의 마지막 체결가를 저장
-			redissonClient.getBucket(redisKeyManager.getPrefix() + "ticker:last_price:" + myOrderDTO.getTokenId())
-				.set(targetPrice);
+			//redissonClient.getBucket(redisKeyManager.getPrefix() + "ticker:last_price:" + myOrderDTO.getTokenId())
+			//	.set(targetPrice);
+			//RMap<Long, String> lastPriceMap = redissonClient.getMap(redisKeyManager.getPrefix() + "ticker:last_prices");
+			//lastPriceMap.fastPut(myOrderDTO.getTokenId(), targetPrice.toString());
 
-			// 1분 봉 제작, 토큰 실시간 리스트 제작
+			// 토큰 실시간 리스트 제작, 캔들 생성
 			marketDataService.processMarketUpdate(transactionDTO);
 
 			log.info("체결: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
