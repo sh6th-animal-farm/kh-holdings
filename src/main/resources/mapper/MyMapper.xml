@@ -43,88 +43,103 @@
         FROM wallet_stats
     </select>
 
-    <select id="selectTokenByWalletId" parameterType="map" resultType="HoldingDTO">
-        WITH latest_token_quotes AS (
-            SELECT DISTINCT ON (token_id)
-            token_id,
-            closing_price
-        FROM token_quotes
-        WHERE unit = 1
-        ORDER BY token_id, candle_time DESC
-            )
-        SELECT
-            t.token_name           AS tokenName,
-            t.ticker_symbol        AS tickerSymbol,
-            h.token_balance        AS tokenBalance,
-            h.purchased_value      AS purchasedValue,
-            (h.token_balance * ltq.closing_price) AS marketValue,
-            (h.token_balance * ltq.closing_price) - h.purchased_value AS profitLoss,
-            CASE
-                WHEN h.purchased_value = 0 THEN 0
-                ELSE
-                    ((h.token_balance * ltq.closing_price) - h.purchased_value)
-                        / h.purchased_value * 100
-                END AS profitLossRate
-        FROM holdings h
-                 JOIN tokens t
-                      ON h.token_id = t.token_id
-                 LEFT JOIN latest_token_quotes ltq
-                           ON h.token_id = ltq.token_id
-        WHERE h.wallet_id = #{walletId}
-        ORDER BY t.token_name
-            LIMIT 10
-        OFFSET (#{page} - 1) * 10
-    </select>
-
     <select id="selectMyTransactionHist" resultType="MyTransactionHistDTO">
         SELECT
             MIN(th.created_at) AS createdAt,
             CASE
-                WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'BUY' THEN 'BUY'
-                WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'SELL' THEN 'SELL'
+                WHEN th.transaction_type = 'TRADE' AND o.order_side = 'BUY' THEN 'BUY'
+                WHEN th.transaction_type = 'TRADE' AND o.order_side = 'SELL' THEN 'SELL'
                 ELSE th.transaction_type::text
-            END AS transactionType,
+                END AS transactionType,
+
             COALESCE(MAX(t.token_name), '-') AS tokenName,
             COALESCE(MAX(t.ticker_symbol), '-') AS tickerSymbol,
+
+            -- executedAmount: CASH IN 이면 +, CASH OUT 이면 - 로 집계
+            SUM(
+                    CASE
+                        WHEN th.asset_type = 'CASH' AND th.direction = 'IN' THEN th.amount
+                        WHEN th.asset_type = 'CASH' AND th.direction = 'OUT' THEN -th.amount
+                        ELSE 0
+                        END
+            ) AS executedAmount,
+
+            -- executedVolume: 수량은 양수로 표기하기 위해 ABS 처리
+            ABS(
+                SUM(
+                    CASE
+                        WHEN th.asset_type = 'TOKEN' THEN th.amount
+                        ELSE 0
+                    END
+                )
+            ) AS executedVolume,
+
+            -- executedPrice: 단가는 양수로 표기하기 위해 ABS 처리
             CASE
-                WHEN th.transaction_type = 'PASS' THEN
-                    SUM(CASE WHEN th.asset_type = 'CASH' AND th.direction = 'OUT' THEN th.amount ELSE 0 END) -
-                    SUM(CASE WHEN th.asset_type = 'CASH' AND th.direction = 'IN' THEN th.amount ELSE 0 END)
-                ELSE MAX(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END)
-                END AS executedAmount,
-            CASE
-                WHEN th.transaction_type = 'PASS' THEN
-                    SUM(CASE WHEN th.asset_type = 'TOKEN' AND th.direction = 'IN' THEN th.amount ELSE 0 END)
-                ELSE MAX(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END)
-                END AS executedVolume,
-            CASE
-                WHEN th.transaction_type IN ('TRADE', 'PASS') THEN
+                WHEN th.transaction_type IN ('TRADE', 'PASS', 'FAIL', 'BURN') THEN
                     COALESCE(
-                            (SUM(CASE WHEN th.asset_type = 'CASH' AND th.direction = 'OUT' THEN th.amount
-                                      WHEN th.asset_type = 'CASH' AND th.direction = 'IN' THEN -th.amount ELSE 0 END)) /
-                            NULLIF(SUM(CASE WHEN th.asset_type = 'TOKEN' AND th.direction = 'IN' THEN th.amount ELSE 0 END), 0),
-                            0
+                        ABS(
+                            SUM(CASE WHEN th.asset_type = 'CASH' AND th.direction = 'IN' THEN th.amount
+                                     WHEN th.asset_type = 'CASH' AND th.direction = 'OUT' THEN -th.amount ELSE 0 END) /
+                            NULLIF(SUM(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END), 0)
+                        ),
+                        0
                     )
                 ELSE 0
-                END AS executedPrice,
+            END AS executedPrice,
+
+            -- balanceAfter: 잔액은 그루핑된 내역 중 가장 최신 데이터를 가져옴
             MAX(CASE WHEN th.asset_type = 'CASH' THEN th.balance_after ELSE 0 END) AS balanceAfter
 
         FROM transaction_hists th
              LEFT JOIN orders o ON th.order_id = o.order_id
              LEFT JOIN tokens t ON o.token_id = t.token_id
-        WHERE th.wallet_id = #{walletId}
-            AND th.transaction_type IN ('TRADE', 'PASS', 'FAIL', 'DIVIDEND', 'BURN')
+
+        <where>
+            th.wallet_id = #{walletId}
+
+            <choose>
+                <when test="category == 'TOKEN'">
+                    AND th.transaction_type = 'TRADE'
+                </when>
+                <when test="category == 'BUY'">
+                    AND th.transaction_type = 'TRADE' AND o.order_side = 'BUY'
+                </when>
+                <when test="category == 'SELL'">
+                    AND th.transaction_type = 'TRADE' AND o.order_side = 'SELL'
+                </when>
+                <when test="category == 'PROJECT'">
+                    AND th.transaction_type IN ('PASS', 'FAIL', 'DIVIDEND', 'BURN')
+                </when>
+                <when test="category == 'PASS' or category == 'FAIL' or category == 'DIVIDEND' or category == 'BURN'">
+                    AND th.transaction_type = #{category}::transaction_type_enum
+                </when>
+                <otherwise>
+                    AND th.transaction_type IN ('TRADE', 'PASS', 'FAIL', 'DIVIDEND', 'BURN')
+                </otherwise>
+            </choose>
+
+            <if test="period > 0">
+                AND th.created_at >= NOW() - INTERVAL '${period} months'
+            </if>
+        </where>
 
         GROUP BY
             CASE
-                WHEN th.transaction_type IN ('TRADE', 'PASS') THEN CAST(th.trade_id AS CHAR)
-                WHEN th.order_id IS NOT NULL THEN CAST(th.order_id AS CHAR)
-                ELSE CAST(th.transaction_id AS CHAR)
+                -- 0. 배당은 무조건 transaction_id로 묶기
+                WHEN th.transaction_type = 'DIVIDEND' THEN th.transaction_id::text
+                -- 1. 주문 번호가 있으면 order_id로 묶기
+                WHEN th.order_id IS NOT NULL THEN th.order_id::text
+                -- 2. 주문 번호가 없으면 trade_id로 묶기
+                WHEN th.trade_id IS NOT NULL THEN th.trade_id::text
+                -- 3. 둘 다 없으면 transaction_id로 묶기
+                ELSE th.transaction_id::text
             END,
-            th.transaction_type
+            th.transaction_type,
+            o.order_side
 
         ORDER BY createdAt DESC
-        LIMIT 10 OFFSET #{offset}
+            LIMIT 10 OFFSET #{offset}
     </select>
 
     <select id="selectAccount">
