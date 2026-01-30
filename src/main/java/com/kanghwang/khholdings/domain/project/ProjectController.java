@@ -57,7 +57,7 @@
  	public ResponseEntity<ApiResponse<List<SnapshotDTO>>> resultSnapshot(@PathVariable Long tokenId) {
  		List<SnapshotDTO> list = projectService.resultSnapshot(tokenId);
 		if (list.isEmpty()) {
-			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+			return ApiResponseUtil.ok("토큰이 이미 소각되었거나 토큰을 보유중인 사용자가 존재하지 않습니다.");
 		}
 
 		return  ApiResponseUtil.ok("배당 스냅샷이 완료되었습니다.", list);
@@ -68,7 +68,7 @@
  	public ResponseEntity<ApiResponse<List<CancelDTO>>> resultDividend(@PathVariable Long tokenId, @RequestBody List<DividendRequestDTO> divRequestList) {
 		List<CancelDTO> list = projectService.resultDividend(tokenId, divRequestList);
 		if (list.isEmpty()) {
-			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+			return ApiResponseUtil.ok("정산할 내역이 존재하지 않습니다.");
 		}
 
 		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", null);

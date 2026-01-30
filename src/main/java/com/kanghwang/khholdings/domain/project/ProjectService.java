@@ -125,6 +125,9 @@ public class ProjectService {
 	@Transactional
 	public List<SnapshotDTO> resultSnapshot(Long tokenId) {
 		List<SnapshotDTO> list = projectRepository.resultSnapshot(tokenId);
+		if (list.size() > 0) {
+			projectRepository.insertSnapshot(list);
+		}
 		return list;
 	}
 
