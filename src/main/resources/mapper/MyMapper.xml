@@ -47,10 +47,10 @@
         SELECT
             MIN(th.created_at) AS createdAt,
             CASE
-                WHEN th.transaction_type = 'TRADE' AND o.order_side = 'BUY' THEN 'BUY'
-                WHEN th.transaction_type = 'TRADE' AND o.order_side = 'SELL' THEN 'SELL'
+                WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'BUY' THEN 'BUY'
+                WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'SELL' THEN 'SELL'
                 ELSE th.transaction_type::text
-                END AS transactionType,
+            END AS transactionType,
 
             COALESCE(MAX(t.token_name), '-') AS tokenName,
             COALESCE(MAX(t.ticker_symbol), '-') AS tickerSymbol,
@@ -126,17 +126,14 @@
 
         GROUP BY
             CASE
-                -- 0. 배당은 무조건 transaction_id로 묶기
+                -- 1. DIVIDEND는 무조건 개별 행 (transaction_id로 분리)
                 WHEN th.transaction_type = 'DIVIDEND' THEN th.transaction_id::text
-                -- 1. 주문 번호가 있으면 order_id로 묶기
-                WHEN th.order_id IS NOT NULL THEN th.order_id::text
-                -- 2. 주문 번호가 없으면 trade_id로 묶기
+                -- 2. BURN과 TRADE는 trade_id가 같다면 무조건 하나로 묶음
                 WHEN th.trade_id IS NOT NULL THEN th.trade_id::text
-                -- 3. 둘 다 없으면 transaction_id로 묶기
+                -- 3. 나머지는 개별 처리
                 ELSE th.transaction_id::text
             END,
-            th.transaction_type,
-            o.order_side
+            th.transaction_type
 
         ORDER BY createdAt DESC
             LIMIT 10 OFFSET #{offset}

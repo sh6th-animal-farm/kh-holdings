@@ -227,10 +227,12 @@ public class ProjectService {
 
 			Long txId1 = snowflakeIdGenerator.nextId();
 			Long txId2 = snowflakeIdGenerator.nextId();
+			Long tradeId = snowflakeIdGenerator.nextId();
 
 			BurnDTO burnDTO = BurnDTO.builder()
 				.txId1(txId1)
 				.txId2(txId2)
+				.tradeId(tradeId)
 				.tokenId(holder.getTokenId())
 				.walletId(holder.getWalletId())
 				.amount(amount)
