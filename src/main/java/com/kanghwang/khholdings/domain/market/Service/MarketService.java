@@ -2,6 +2,8 @@ package com.kanghwang.khholdings.domain.market.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -79,24 +81,65 @@ public class MarketService {
         return marketRepository.selectBySearch(content);
     }
 
-    // 차트 조회
+    // 차트 조회 [1]
     public List<CandleDTO> selectCandles(Long tokenId, int unit, long start, long end) {
 
-        String redisKey = String.format("candles:%s:%d", unit, tokenId);
-        RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(redisKey);
+        String cacheKey = String.format("candle:%s:%d", unit + "m", tokenId); // Redis 캐시 키
+        long currentMinute = OffsetDateTime.now().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
+        String liveCandleKey = String.format("candle:1m:%d:%d", tokenId, currentMinute); // Redis 실시간 키
 
-        // 1. redis 범위 조회 (Score : Timestamp)
-        Collection<CandleDTO> cached = zset.valueRange(start, true, end, true);
-        if (!cached.isEmpty()) {
-            return new ArrayList<>(cached);
+        // 1. Redis 캐시 조회
+        RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(cacheKey);
+        List<CandleDTO> resultList = new ArrayList<>(zset.valueRange(start, true, end, true));
+
+        // 2. 캐시된 데이터에 없는 범위
+        boolean isMissing = false;
+        if (resultList.isEmpty()) {
+            isMissing = true;
+        } else {
+            long oldesCandleTime = resultList.get(0).getCandleTime();
+            if (oldesCandleTime > start) {
+                isMissing = true;
+            }
         }
 
-        // 2. redis에 없을 시 DB 로드 및 redis에 저장
-        RLock lock = redissonClient.getLock("lock:" + redisKey);
+        // 3. 2에서 생긴 부분 병합
+        if (isMissing) {
+            List<CandleDTO> dbData = synchronizedLoadFromDb(tokenId, unit, start, end, zset);
+
+            Map<Long, CandleDTO> mergedMap  = new TreeMap<>();
+            for (CandleDTO c : dbData) mergedMap.put(c.getCandleTime(), c);
+            for (CandleDTO c : resultList) mergedMap.put(c.getCandleTime(), c);
+
+            resultList = new ArrayList<>(mergedMap.values());
+        }
+
+        // 3. 실시간 캔들 (DB/Redis Cache에 저장되지 않은 캔들) 병합
+        CandleDTO liveCandle = fetchLiveCandle(liveCandleKey, tokenId, unit, currentMinute, resultList);
+        if (liveCandle != null) {
+            if (resultList.isEmpty()) {
+                resultList.add(liveCandle);
+            } else {
+                int lastIdx = resultList.size() - 1;
+                CandleDTO last = resultList.get(lastIdx);
+                if (last.getCandleTime() == currentMinute) {
+                    resultList.set(lastIdx, liveCandle);
+                } else if (last.getCandleTime() < currentMinute) {
+                    resultList.add(liveCandle);
+                }
+            }
+        }
+
+        return resultList;
+    }
+
+    // 차트 조회 [2] - redis에 없을 시 DB 로드 및 redis에 저장
+    private List<CandleDTO> synchronizedLoadFromDb(Long tokenId, int unit, long start, long end, RScoredSortedSet<CandleDTO> zset) {
+        RLock lock = redissonClient.getLock("lock:candles:" + tokenId);
         try {
             if (lock.tryLock(5, 10, TimeUnit.SECONDS)) {
                 // 재확인
-                cached = zset.valueRange(start, true, end, true);
+                Collection<CandleDTO> cached = zset.valueRange(start, true, end, true);
                 if (!cached.isEmpty()) {
                     return new ArrayList<>(cached);
                 }
@@ -113,17 +156,51 @@ public class MarketService {
                 }
 
                 zset.addAll(toCache);
+
                 return dbData;
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
             if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-                ;
+                if (lock.isHeldByCurrentThread()) lock.unlock();
             }
         }
         return new ArrayList<>();
+    }
+
+    // 차트 조회 [3] - Redis에서 가져온 캔들 DTO로 변환
+    private CandleDTO fetchLiveCandle(String key, Long tokenId, int unit, long time, List<CandleDTO> resultList) {
+        Map<String, String> raw = redissonClient
+            .<String, String>getMap(key, org.redisson.client.codec.StringCodec.INSTANCE)
+            .readAllMap();
+
+        // 거래가 없는 경우
+        if (raw == null || raw.isEmpty() || !raw.containsKey("open")) {
+            if (resultList != null && !resultList.isEmpty()) {
+                CandleDTO lastCandle = resultList.get(resultList.size() - 1);
+                return CandleDTO.builder()
+                        .tokenId(tokenId).unit(unit).candleTime(time)
+                        .openingPrice(lastCandle.getClosingPrice())
+                        .highPrice(lastCandle.getClosingPrice())
+                        .lowPrice(lastCandle.getClosingPrice())
+                        .closingPrice(lastCandle.getClosingPrice())
+                        .tradeVolume(BigDecimal.ZERO)
+                        .build();
+            }
+            return null; // 직전 데이터도 없다면 아예 안 그리는 게 맞습니다.
+        }
+
+        return CandleDTO.builder()
+            .tokenId(tokenId)
+            .unit(unit)
+            .candleTime(time)
+            .openingPrice(new BigDecimal(raw.get("open")))
+            .highPrice(new BigDecimal(raw.get("high")))
+            .lowPrice(new BigDecimal(raw.get("low")))
+            .closingPrice(new BigDecimal(raw.get("close")))
+            .tradeVolume(new BigDecimal(raw.get("vol")))
+            .build();
     }
 
     // 미체결 내역 조회

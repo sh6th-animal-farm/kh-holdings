@@ -9,14 +9,15 @@
         WITH BaseTime AS (
             SELECT
                 CASE
-                    WHEN CURRENT_TIME <![CDATA[ < ]]> '09:00:00' THEN CURRENT_DATE - INTERVAL '15 hours' -- 어제 09:00
-                    ELSE CURRENT_DATE <![CDATA[ + ]]> INTERVAL '9 hours' -- 오늘 09:00
+                    WHEN CURRENT_TIME AT TIME ZONE 'Asia/Seoul' <![CDATA[ < ]]> '09:00:00'
+                    THEN EXTRACT(EPOCH FROM (CURRENT_DATE - INTERVAL '1 day'))::BIGINT
+                    ELSE EXTRACT(EPOCH FROM CURRENT_DATE)::BIGINT
                 END as start_time
         ),
         DailyStats AS (
             SELECT
                 token_id,
-                SUM(trade_amount) as daily_vol,
+                SUM(trade_volume) as daily_vol,
                 MAX(high_price) as daily_high, -- 오늘 최고가
                 MIN(low_price) as daily_low    -- 오늘 최저가
             FROM token_quotes, BaseTime
@@ -185,7 +186,7 @@
     <select id="selectCandles" resultType="CandleDTO">
         SELECT
             token_id,
-            (EXTRACT(EPOCH FROM candle_time))::BIGINT AS candleTime,
+            candle_time,
             opening_price,
             high_price ,
             low_price,

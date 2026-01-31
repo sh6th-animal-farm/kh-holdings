@@ -99,7 +99,7 @@
         ) VALUES
         <foreach collection="list" item="c" separator=",">
             (
-            #{c.tokenId}, TO_TIMESTAMP(#{c.candleTime}),
+            #{c.tokenId}, #{c.candleTime},
             #{c.openingPrice}::numeric, #{c.highPrice}::numeric,
             #{c.lowPrice}::numeric, #{c.closingPrice}::numeric,
             #{c.tradeVolume}::numeric, 1
