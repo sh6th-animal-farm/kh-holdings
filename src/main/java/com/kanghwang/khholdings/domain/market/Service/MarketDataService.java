@@ -34,10 +34,11 @@ public class MarketDataService {
 	// 3시간 뒤 자동 삭제
 	private static final String luaScript = """
             local c = redis.call('HMGET', KEYS[1], 'high', 'low', 'close', 'vol')
-            local price = tonumber(ARGV[1])
-            local vol = tonumber(ARGV[2])
+            local price = tonumber(ARGV[1])  -- targetPrice
+            local vol = tonumber(ARGV[2])    -- executedVolume
 
             if not c[1] then
+            	-- 새로운 봉 생성
                 redis.call('HMSET', KEYS[1], 'open', price, 'high', price, 'low', price, 'close', price, 'vol', vol)
             else
                 -- 기존 봉 업데이트
@@ -46,7 +47,7 @@ public class MarketDataService {
                 redis.call('HSET', KEYS[1], 'close', price)
                 redis.call('HINCRBYFLOAT', KEYS[1], 'vol', vol)
             end
-            redis.call('EXPIRE', KEYS[1], 10800)
+            redis.call('EXPIRE', KEYS[1], 10800) -- 현재 봉 데이터를 10800초(3시간) 동안만 유지
             """;
 
 	// 1. OrderRedisService에서 호출됨
@@ -57,7 +58,7 @@ public class MarketDataService {
 
 	// 2. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
 	public void updateMarketSnapshot(TransactionRequestDTO trade) {
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getMarketInfoKey());
 		TokenListDTO token = marketInfoMap.get(trade.getTokenId());
 
 		if(token != null) {
@@ -83,7 +84,7 @@ public class MarketDataService {
 
 			// 등락률
 			if (token.getOpenPrice() != null && token.getOpenPrice().compareTo(BigDecimal.ZERO) > 0) {
-				// 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
+				// 등락률 계산 = ((현재가 - 오늘 오전 9시 기준가) / 기준가) * 100
 				BigDecimal rate = trade.getTargetPrice().subtract(token.getOpenPrice())
 					.divide(token.getOpenPrice(), 4, RoundingMode.HALF_UP)
 					.multiply(new BigDecimal("100"))
@@ -99,31 +100,35 @@ public class MarketDataService {
 			token.setDailyTradeVolume(newTotalVolume);
 
 			// 거래대금에 따른 순위
-			redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() +"market:ranking")
+			// 추후 토큰 거래소 목록 조회 시, 정렬된 목록 반환
+			redissonClient.getScoredSortedSet(redisKeyManager.getMarketRankKey())
 					.addScore(trade.getTokenId(), amount.doubleValue());
 
+			// 토큰 리스트에 정보 업데이트
 			marketInfoMap.put(trade.getTokenId(), token);
 
-			redissonClient.getTopic(redisKeyManager.getPrefix() +"market:update:topic").publish(token);
+			// 토큰 정보를 웹소켓을 통해 실시간으로 전파하여 토큰 실시간 리스트를 업데이트
+			redissonClient.getTopic(redisKeyManager.getMarketUpdateTopicKey()).publish(token);
 		}
 	}
 
 	// 1분 봉 실시간 생성 및 Websocket 전송
 	public void updateRedisCandle(TransactionRequestDTO trade) {
 
-		// 1분 단위로 버킷팅 (ex: 12:05:33 -> 12:05:00
-		long minute = trade.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
-		String candleKey = "candle:1m:" + trade.getTokenId() + ":" + minute;
+		// 1분 단위로 버킷팅 (ex: 12:05:33 -> 12:05:00)
+		long minute = trade.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).toEpochSecond(); // 분까지 짜른 후, 타임스탬프로 변환
+		String candleKey = redisKeyManager.getCandleKey(trade.getTokenId(), minute);
 
 		redissonClient.getScript(org.redisson.client.codec.StringCodec.INSTANCE).eval(
 			RScript.Mode.READ_WRITE,
-			luaScript, // 상단에서 작성했던 거
+			luaScript,                                  // 상단에서 작성했던 거
 			RScript.ReturnType.VALUE,
-			List.of(candleKey),
-			trade.getTargetPrice().toPlainString(),
-			trade.getExecutedVolume().toPlainString());
+			List.of(candleKey),                         // KEYS[1]
+			trade.getTargetPrice().toPlainString(),     // ARGV[1]
+			trade.getExecutedVolume().toPlainString()   // ARGV[2]
+		);
 
-		// 업데이트된 최신 캔들 정보를 읽어서 전파
+		// 루아 스크립트를 통해 업데이트된 최신 캔들 정보를 읽어서 전파
 		// 추후에 트레이딩뷰 차트를 실시간으로 움직이게 함
 		Map<String, String> candleMap = redissonClient
 			.<String, String>getMap(candleKey, org.redisson.client.codec.StringCodec.INSTANCE)
