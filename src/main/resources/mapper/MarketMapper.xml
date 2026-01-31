@@ -200,7 +200,7 @@
         AND
             unit = #{unit}
         AND
-            candle_time BETWEEN TO_TIMESTAMP(#{start}) AND TO_TIMESTAMP(#{end})
+            candle_time BETWEEN #{start} AND #{end}
         ORDER BY
             candle_time
         LIMIT 1000
