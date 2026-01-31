@@ -2,11 +2,14 @@ package com.kanghwang.khholdings.domain.market.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
@@ -17,89 +20,213 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import lombok.RequiredArgsConstructor;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MarketService {
 
-	private final MarketRepository marketRepository;
-	private final RedissonClient redissonClient;
-	private final RedisKeyManager redisKeyManager;
+    private final MarketRepository marketRepository;
+    private final RedissonClient redissonClient;
+    private final RedisKeyManager redisKeyManager;
 
-	// 종목 전체 조회
-	public List<TokenListDTO> selectAll() {
+    // 종목 전체 조회
+    public List<TokenListDTO> selectAll() {
 
-		// 1. Redis Map에서 실시간 데이터 조회
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
-		List<TokenListDTO> list = new ArrayList<>(marketInfoMap.readAllValues());
+        long start = System.currentTimeMillis();
+        log.info("API 시작");
 
-		if (list.isEmpty()) {
-			list = marketRepository.selectAll();
+        // 1. Redis Map에서 실시간 데이터 조회
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+        List<TokenListDTO> list = new ArrayList<>(marketInfoMap.readAllValues());
 
-			if (list != null && !list.isEmpty()) {
+        if (list.isEmpty()) {
+            list = marketRepository.selectAll();
 
-				RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
-				list.forEach(dto -> {
-					if (dto.getDailyTradeVolume() != null) {
-						dto.setDailyTradeVolume(dto.getDailyTradeVolume().setScale(0, RoundingMode.DOWN));
-					}
-					if (dto.getChangeRate() != null) {
-						dto.setChangeRate(dto.getChangeRate().setScale(2, RoundingMode.HALF_UP));
-					}
-					rankingSet.add(dto.getDailyTradeVolume().doubleValue(), dto.getTokenId());
-				});
+            if (list != null && !list.isEmpty()) {
 
-				Map<Long, TokenListDTO> map = list.stream()
-						.collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
-				marketInfoMap.putAll(map);
-			}
-		}
+                RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
+                list.forEach(dto -> {
+                    if (dto.getDailyTradeVolume() != null) {
+                        dto.setDailyTradeVolume(dto.getDailyTradeVolume().setScale(0, RoundingMode.DOWN));
+                    }
+                    if (dto.getChangeRate() != null) {
+                        dto.setChangeRate(dto.getChangeRate().setScale(2, RoundingMode.HALF_UP));
+                    }
+                    rankingSet.add(dto.getDailyTradeVolume().doubleValue(), dto.getTokenId());
+                });
 
-		list.sort((a, b) -> {
-			BigDecimal volA = a.getDailyTradeVolume() != null ? a.getDailyTradeVolume() : BigDecimal.ZERO;
-			BigDecimal volB = b.getDailyTradeVolume() != null ? b.getDailyTradeVolume() : BigDecimal.ZERO;
-			return volB.compareTo(volA);
-		});
+                Map<Long, TokenListDTO> map = list.stream().collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
+                marketInfoMap.putAll(map);
+            }
+        }
 
-		return list == null ? new ArrayList<>() : list;
-	}
+        list.sort((a, b) -> {
+            BigDecimal volA = a.getDailyTradeVolume() != null ? a.getDailyTradeVolume() : BigDecimal.ZERO;
+            BigDecimal volB = b.getDailyTradeVolume() != null ? b.getDailyTradeVolume() : BigDecimal.ZERO;
+            return volB.compareTo(volA);
+        });
 
-	// 종목 검색어 조회
-	public List<TokenListDTO> selectBySearch(String content) {
-		return marketRepository.selectBySearch(content);
-	}
+        log.info("로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start));
 
-	// 차트 조회
-	public List<CandleDTO> selectCandles(Long tokenId, int unit, int limit) {
-		return marketRepository.selectCandles(tokenId, unit, limit);
-	}
+        return list == null ? new ArrayList<>() : list;
+    }
 
-	// 미체결 내역 조회
-	public List<PendingDTO> selectPending(Long tokenId, Long walletId) {
-		return marketRepository.selectPending(tokenId, walletId);
-	}
+    // 종목 검색어 조회
+    public List<TokenListDTO> selectBySearch(String content) {
+        return marketRepository.selectBySearch(content);
+    }
 
-	// 현재가 조회
-	public BigDecimal getCurrentPrice(Long tokenId) { return marketRepository.selectLatestTokenPrice(tokenId); }
+    // 차트 조회 [1]
+    public List<CandleDTO> selectCandles(Long tokenId, int unit, long start, long end) {
 
-	// 매수 호가 조회
-	public List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId) {
-		BigDecimal price = getCurrentPrice(tokenId);
-		return marketRepository.selectAllOrderBuyPrice(tokenId, price);
-	}
+        String cacheKey = String.format("candle:%s:%d", unit + "m", tokenId); // Redis 캐시 키
+        long currentMinute = OffsetDateTime.now().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
+        String liveCandleKey = String.format("candle:1m:%d:%d", tokenId, currentMinute); // Redis 실시간 키
 
-	// 매도 호가 조회
-	public List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId) {
-		BigDecimal price = getCurrentPrice(tokenId);
-		return marketRepository.selectAllOrderSellPrice(tokenId, price);
-	}
+        // 1. Redis 캐시 조회
+        RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(cacheKey);
+        List<CandleDTO> resultList = new ArrayList<>(zset.valueRange(start, true, end, true));
 
-	// 체결 조회
-	public List<TradeDTO> selectAllTradePrice(Long tokenId) {
-		return marketRepository.selectAllTradePrice(tokenId);
-	}
+        // 2. 캐시된 데이터에 없는 범위
+        boolean isMissing = false;
+        if (resultList.isEmpty()) {
+            isMissing = true;
+        } else {
+            long oldesCandleTime = resultList.get(0).getCandleTime();
+            if (oldesCandleTime > start) {
+                isMissing = true;
+            }
+        }
+
+        // 3. 2에서 생긴 부분 병합
+        if (isMissing) {
+            List<CandleDTO> dbData = synchronizedLoadFromDb(tokenId, unit, start, end, zset);
+
+            Map<Long, CandleDTO> mergedMap  = new TreeMap<>();
+            for (CandleDTO c : dbData) mergedMap.put(c.getCandleTime(), c);
+            for (CandleDTO c : resultList) mergedMap.put(c.getCandleTime(), c);
+
+            resultList = new ArrayList<>(mergedMap.values());
+        }
+
+        // 3. 실시간 캔들 (DB/Redis Cache에 저장되지 않은 캔들) 병합
+        CandleDTO liveCandle = fetchLiveCandle(liveCandleKey, tokenId, unit, currentMinute, resultList);
+        if (liveCandle != null) {
+            if (resultList.isEmpty()) {
+                resultList.add(liveCandle);
+            } else {
+                int lastIdx = resultList.size() - 1;
+                CandleDTO last = resultList.get(lastIdx);
+                if (last.getCandleTime() == currentMinute) {
+                    resultList.set(lastIdx, liveCandle);
+                } else if (last.getCandleTime() < currentMinute) {
+                    resultList.add(liveCandle);
+                }
+            }
+        }
+
+        return resultList;
+    }
+
+    // 차트 조회 [2] - redis에 없을 시 DB 로드 및 redis에 저장
+    private List<CandleDTO> synchronizedLoadFromDb(Long tokenId, int unit, long start, long end, RScoredSortedSet<CandleDTO> zset) {
+        RLock lock = redissonClient.getLock("lock:candles:" + tokenId);
+        try {
+            if (lock.tryLock(5, 10, TimeUnit.SECONDS)) {
+                // 재확인
+                Collection<CandleDTO> cached = zset.valueRange(start, true, end, true);
+                if (!cached.isEmpty()) {
+                    return new ArrayList<>(cached);
+                }
+
+                // DB 조회
+                List<CandleDTO> dbData = marketRepository.selectCandles(tokenId, unit, start, end);
+                if (dbData.isEmpty()) {
+                    return new ArrayList<>();
+                }
+
+                Map<CandleDTO, Double> toCache = new HashMap<>();
+                for (CandleDTO candle : dbData) {
+                    toCache.put(candle, (double) candle.getCandleTime());
+                }
+
+                zset.addAll(toCache);
+
+                return dbData;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                if (lock.isHeldByCurrentThread()) lock.unlock();
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    // 차트 조회 [3] - Redis에서 가져온 캔들 DTO로 변환
+    private CandleDTO fetchLiveCandle(String key, Long tokenId, int unit, long time, List<CandleDTO> resultList) {
+        Map<String, String> raw = redissonClient
+            .<String, String>getMap(key, org.redisson.client.codec.StringCodec.INSTANCE)
+            .readAllMap();
+
+        // 거래가 없는 경우
+        if (raw == null || raw.isEmpty() || !raw.containsKey("open")) {
+            if (resultList != null && !resultList.isEmpty()) {
+                CandleDTO lastCandle = resultList.get(resultList.size() - 1);
+                return CandleDTO.builder()
+                        .tokenId(tokenId).unit(unit).candleTime(time)
+                        .openingPrice(lastCandle.getClosingPrice())
+                        .highPrice(lastCandle.getClosingPrice())
+                        .lowPrice(lastCandle.getClosingPrice())
+                        .closingPrice(lastCandle.getClosingPrice())
+                        .tradeVolume(BigDecimal.ZERO)
+                        .build();
+            }
+            return null; // 직전 데이터도 없다면 아예 안 그리는 게 맞습니다.
+        }
+
+        return CandleDTO.builder()
+            .tokenId(tokenId)
+            .unit(unit)
+            .candleTime(time)
+            .openingPrice(new BigDecimal(raw.get("open")))
+            .highPrice(new BigDecimal(raw.get("high")))
+            .lowPrice(new BigDecimal(raw.get("low")))
+            .closingPrice(new BigDecimal(raw.get("close")))
+            .tradeVolume(new BigDecimal(raw.get("vol")))
+            .build();
+    }
+
+    // 미체결 내역 조회
+    public List<PendingDTO> selectPending(Long tokenId, Long walletId) {
+        return marketRepository.selectPending(tokenId, walletId);
+    }
+
+    // 현재가 조회
+    public BigDecimal getCurrentPrice(Long tokenId) {
+        return marketRepository.selectLatestTokenPrice(tokenId);
+    }
+
+    // 매수 호가 조회
+    public List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId) {
+        BigDecimal price = getCurrentPrice(tokenId);
+        return marketRepository.selectAllOrderBuyPrice(tokenId, price);
+    }
+
+    // 매도 호가 조회
+    public List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId) {
+        BigDecimal price = getCurrentPrice(tokenId);
+        return marketRepository.selectAllOrderSellPrice(tokenId, price);
+    }
+
+    // 체결 조회
+    public List<TradeDTO> selectAllTradePrice(Long tokenId) {
+        return marketRepository.selectAllTradePrice(tokenId);
+    }
 }

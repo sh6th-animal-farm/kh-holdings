@@ -17,6 +17,7 @@
  import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
  import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
  import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
+ import com.kanghwang.khholdings.domain.project.dto.SubscriptionResultDTO;
  import com.kanghwang.khholdings.global.dto.ApiResponse;
  import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
@@ -47,9 +48,13 @@
 
  	// 청약 정산 (당첨, 낙첨)
  	@PostMapping("/result/{tokenId}")
- 	public ResponseEntity<ApiResponse<Void>> resultSubscription(@PathVariable Long tokenId, @RequestBody List<SubscriptionRequestDTO> subRequestList) {
- 		projectService.resultSubscription(tokenId, subRequestList);
-		return ApiResponseUtil.ok("청약 정산이 완료되었습니다.", null);
+ 	public ResponseEntity<ApiResponse<List<SubscriptionResultDTO>>> resultSubscription(@PathVariable Long tokenId, @RequestBody List<SubscriptionRequestDTO> subRequestList) {
+		List<SubscriptionResultDTO> list = projectService.resultSubscription(tokenId, subRequestList);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("정산할 내역이 존재하지 않습니다.");
+		}
+
+		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", list);
  	}
 
  	// 배당 스냅샷
@@ -57,7 +62,7 @@
  	public ResponseEntity<ApiResponse<List<SnapshotDTO>>> resultSnapshot(@PathVariable Long tokenId) {
  		List<SnapshotDTO> list = projectService.resultSnapshot(tokenId);
 		if (list.isEmpty()) {
-			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
+			return ApiResponseUtil.ok("토큰이 이미 소각되었거나 토큰을 보유중인 사용자가 존재하지 않습니다.");
 		}
 
 		return  ApiResponseUtil.ok("배당 스냅샷이 완료되었습니다.", list);
@@ -65,16 +70,24 @@
 
  	// 배당 정산
  	@PostMapping("/dividend/after/{tokenId}")
- 	public ResponseEntity<ApiResponse<Void>> resultDividend(@PathVariable Long tokenId, @RequestBody List<DividendRequestDTO> divRequestList) {
- 		projectService.resultDividend(tokenId, divRequestList);
-		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", null);
+ 	public ResponseEntity<ApiResponse<List<CancelDTO>>> resultDividend(@PathVariable Long tokenId, @RequestBody List<DividendRequestDTO> divRequestList) {
+		List<CancelDTO> list = projectService.resultDividend(tokenId, divRequestList);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("정산할 내역이 존재하지 않습니다.");
+		}
+
+		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", list);
  	}
 
  	// 토큰 소각
  	@PostMapping("/close/{tokenId}")
- 	public ResponseEntity<ApiResponse<Void>> burnToken(@PathVariable Long tokenId) {
-		projectService.burnToken(tokenId);
-		return ApiResponseUtil.ok("토큰 소각 및 정산이 완료되었습니다.", null);
+ 	public ResponseEntity<ApiResponse<List<CancelDTO>>> burnToken(@PathVariable Long tokenId) {
+		List<CancelDTO> list = projectService.burnToken(tokenId);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("토큰이 소각되었습니다.");
+		}
+
+		return ApiResponseUtil.ok("토큰 소각 및 정산이 완료되었습니다.", list);
  	}
 
 	 // 토큰 발행

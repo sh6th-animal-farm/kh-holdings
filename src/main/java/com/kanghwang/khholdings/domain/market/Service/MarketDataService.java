@@ -8,17 +8,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.redisson.api.BatchResult;
-import org.redisson.api.RBatch;
-import org.redisson.api.RMap;
-import org.redisson.api.RScript;
-import org.redisson.api.RedissonClient;
+import org.redisson.api.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.order.OrderRepository;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
@@ -59,17 +55,35 @@ public class MarketDataService {
 		updateRedisCandle(trade);
 	}
 
-	// 1. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
+	// 2. 토큰 시세 리스트 실시간 업데이트 (현재가, 등락률, 거래대금)
 	public void updateMarketSnapshot(TransactionRequestDTO trade) {
 		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
 		TokenListDTO token = marketInfoMap.get(trade.getTokenId());
 
 		if(token != null) {
-			// 현재가
-			token.setMarketPrice(trade.getTargetPrice());
+			BigDecimal currentPrice = trade.getTargetPrice();
 
+			// 현재가
+			token.setMarketPrice(currentPrice);
+
+			// 시가
+			if (token.getOpenPrice() == null || token.getOpenPrice().compareTo(BigDecimal.ZERO) == 0) {
+				token.setOpenPrice(currentPrice);
+			}
+
+			// 고가
+			if (token.getHighPrice() == null || currentPrice.compareTo(token.getHighPrice()) > 0) {
+				token.setHighPrice(currentPrice);
+			}
+
+			// 저가
+			if (token.getLowPrice() == null || currentPrice.compareTo(token.getLowPrice()) < 0) {
+				token.setLowPrice(currentPrice);
+			}
+
+			// 등락률
 			if (token.getOpenPrice() != null && token.getOpenPrice().compareTo(BigDecimal.ZERO) > 0) {
-				// 등락률 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
+				// 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
 				BigDecimal rate = trade.getTargetPrice().subtract(token.getOpenPrice())
 					.divide(token.getOpenPrice(), 4, RoundingMode.HALF_UP)
 					.multiply(new BigDecimal("100"))
@@ -77,6 +91,7 @@ public class MarketDataService {
 					.setScale(2, RoundingMode.HALF_UP);
 				token.setChangeRate(rate);
 			}
+
 			// 거래대금
 			BigDecimal amount = trade.getTargetPrice().multiply(trade.getExecutedVolume());
 			BigDecimal newTotalVolume = token.getDailyTradeVolume().add(amount)
@@ -93,7 +108,7 @@ public class MarketDataService {
 		}
 	}
 
-	// 1분 봉 집계 로직
+	// 1분 봉 실시간 생성 및 Websocket 전송
 	public void updateRedisCandle(TransactionRequestDTO trade) {
 
 		// 1분 단위로 버킷팅 (ex: 12:05:33 -> 12:05:00
@@ -117,7 +132,6 @@ public class MarketDataService {
 		if (candleMap != null && !candleMap.isEmpty()) {
 			String topicKey = redisKeyManager.getCandleTopicKey(trade.getTokenId());
 
-			// 시간은 프론트엔드에서 한국 시간으로 변경 예정
 			CandleDTO liveCandle = CandleDTO.builder()
 				.tokenId(trade.getTokenId())
 				.unit(1)
@@ -146,15 +160,20 @@ public class MarketDataService {
 
 		for(Long tokenId : marketInfoMap.keySet()) {
 			TokenListDTO dto = marketInfoMap.get(tokenId);
-			if(dto == null) continue;
+			if(dto == null) {
+				continue;
+			}
 
-			dto.setOpenPrice(dto.getMarketPrice());
+			BigDecimal openingPrice = dto.getMarketPrice();
+			dto.setOpenPrice(openingPrice);
+			dto.setHighPrice(openingPrice);
+			dto.setLowPrice(openingPrice);
 			dto.setDailyTradeVolume(BigDecimal.ZERO);
 			dto.setChangeRate(BigDecimal.ZERO);
 
 			// 배치에 모아뒀다가
 			batch.getMap("market:info").putAsync(tokenId, dto);
-			batch.getTopic("market:update:topic").publishAsync(dto);
+			batch.getTopic(redisKeyManager.getPrefix() + "market:update:topic").publishAsync(dto);
 			System.out.println("[MarketDataService] 9시 초기화 dto: " + dto.toString());
 		}
 		// 한 번에 redis로 전송
@@ -217,9 +236,20 @@ public class MarketDataService {
 				candleList.add(candle);
 			}
 
-			// 5. DB에 한꺼번에 저장
+			// 5. 1분 봉 저장
 			if (!candleList.isEmpty()) {
+				// DB에 저장
 				orderRepository.insertCandlesBatch(candleList);
+
+				// Redis에 저장
+				for (CandleDTO candle : candleList) {
+					String zsetKey = "candle:1m:" + candle.getTokenId();
+					RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(zsetKey);
+					zset.add((double)candle.getCandleTime(), candle);
+					zset.removeRangeByRank(0, -1001);
+					// zset.expire(24, TimeUnit.HOURS);
+				}
+
 				log.info("[TradeWorker - Sync] {} 시점의 1분 봉 {}건을 DB로 저장 완료", lastMinute, candleList.size());
 			}
 
