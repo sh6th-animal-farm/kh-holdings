@@ -81,9 +81,13 @@
 
  	// 토큰 소각
  	@PostMapping("/close/{tokenId}")
- 	public ResponseEntity<ApiResponse<Void>> burnToken(@PathVariable Long tokenId) {
-		projectService.burnToken(tokenId);
-		return ApiResponseUtil.ok("토큰 소각 및 정산이 완료되었습니다.", null);
+ 	public ResponseEntity<ApiResponse<List<CancelDTO>>> burnToken(@PathVariable Long tokenId) {
+		List<CancelDTO> list = projectService.burnToken(tokenId);
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("토큰이 소각되었습니다.");
+		}
+
+		return ApiResponseUtil.ok("토큰 소각 및 정산이 완료되었습니다.", list);
  	}
 
 	 // 토큰 발행
