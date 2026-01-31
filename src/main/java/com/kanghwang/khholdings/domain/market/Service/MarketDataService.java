@@ -116,7 +116,7 @@ public class MarketDataService {
 	public void updateRedisCandle(TransactionRequestDTO trade) {
 
 		// 1분 단위로 버킷팅 (ex: 12:05:33 -> 12:05:00)
-		Long minute = trade.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).toEpochSecond(); // 분까지 짜른 후, 타임스탬프로 변환
+		long minute = trade.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).toEpochSecond(); // 분까지 짜른 후, 타임스탬프로 변환
 		String candleKey = redisKeyManager.getCandleKey(trade.getTokenId(), minute);
 
 		redissonClient.getScript(org.redisson.client.codec.StringCodec.INSTANCE).eval(
