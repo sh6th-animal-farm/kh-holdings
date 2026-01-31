@@ -87,11 +87,18 @@ public class MarketWorker {
 		RTopic tokenListTopic = redissonClient.getTopic(redisKeyManager.getPrefix() + "market:update:topic");
 
 		tokenListTopic.addListener(TokenListDTO.class, (channel, event) -> {
+
+			// 1. 목록 페이지 리스트용
 			messagingTemplate.convertAndSend("/topic/tokenList", event);
+
+			// 2. 특정 토큰용(목록 페이지 우측 패널, 상세 페이지)
+			messagingTemplate.convertAndSend("/topic/tokenList/" + event.getTokenId(), event);
 
 			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
 					+ " 토큰명: " + event.getTokenName()
 					+ ", 현재가: " + event.getMarketPrice()
+					+ ", 고가: " + event.getHighPrice()
+					+ ", 저가: " + event.getLowPrice()
 					+ ", 등락률: " + event.getChangeRate() + "%"
 					+ ", 거래대금: " + event.getDailyTradeVolume()
 					);

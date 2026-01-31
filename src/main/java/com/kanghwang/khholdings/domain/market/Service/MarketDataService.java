@@ -61,11 +61,24 @@ public class MarketDataService {
 		TokenListDTO token = marketInfoMap.get(trade.getTokenId());
 
 		if(token != null) {
-			// 현재가
-			token.setMarketPrice(trade.getTargetPrice());
+			BigDecimal currentPrice = trade.getTargetPrice();
 
+			// 현재가
+			token.setMarketPrice(currentPrice);
+
+			// 고가
+			if (token.getHighPrice() == null || currentPrice.compareTo(token.getHighPrice()) > 0) {
+				token.setHighPrice(currentPrice);
+			}
+
+			// 저가
+			if (token.getLowPrice() == null || currentPrice.compareTo(token.getLowPrice()) < 0) {
+				token.setLowPrice(currentPrice);
+			}
+
+			// 등락률
 			if (token.getOpenPrice() != null && token.getOpenPrice().compareTo(BigDecimal.ZERO) > 0) {
-				// 등락률 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
+				// 계산 = ((현재가 - 오늘 오전 9시 기준가) /  기준가) * 100
 				BigDecimal rate = trade.getTargetPrice().subtract(token.getOpenPrice())
 					.divide(token.getOpenPrice(), 4, RoundingMode.HALF_UP)
 					.multiply(new BigDecimal("100"))
@@ -73,6 +86,7 @@ public class MarketDataService {
 					.setScale(2, RoundingMode.HALF_UP);
 				token.setChangeRate(rate);
 			}
+
 			// 거래대금
 			BigDecimal amount = trade.getTargetPrice().multiply(trade.getExecutedVolume());
 			BigDecimal newTotalVolume = token.getDailyTradeVolume().add(amount)
@@ -141,15 +155,20 @@ public class MarketDataService {
 
 		for(Long tokenId : marketInfoMap.keySet()) {
 			TokenListDTO dto = marketInfoMap.get(tokenId);
-			if(dto == null) continue;
+			if(dto == null) {
+				continue;
+			}
 
-			dto.setOpenPrice(dto.getMarketPrice());
+			BigDecimal openingPrice = dto.getMarketPrice();
+			dto.setOpenPrice(openingPrice);
+			dto.setHighPrice(openingPrice);
+			dto.setLowPrice(openingPrice);
 			dto.setDailyTradeVolume(BigDecimal.ZERO);
 			dto.setChangeRate(BigDecimal.ZERO);
 
 			// 배치에 모아뒀다가
 			batch.getMap("market:info").putAsync(tokenId, dto);
-			batch.getTopic("market:update:topic").publishAsync(dto);
+			batch.getTopic(redisKeyManager.getPrefix() + "market:update:topic").publishAsync(dto);
 			System.out.println("[MarketDataService] 9시 초기화 dto: " + dto.toString());
 		}
 		// 한 번에 redis로 전송
