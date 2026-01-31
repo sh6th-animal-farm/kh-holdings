@@ -213,7 +213,9 @@ public class ProjectService {
 		// 2. 대상자 조회
 		List<SnapshotDTO> holders = projectRepository.resultSnapshot(tokenId);
 		if (holders == null || holders.isEmpty()) {
-			throw new IllegalArgumentException("토큰 보유 대상자가 없습니다.");
+			projectRepository.deleteToken(tokenId);
+			return;
+//			throw new IllegalArgumentException("토큰 보유 대상자가 없습니다.");
 		}
 
 		// 3. batch 처리

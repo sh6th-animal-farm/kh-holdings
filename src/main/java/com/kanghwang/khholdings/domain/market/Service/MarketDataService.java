@@ -126,7 +126,7 @@ public class MarketDataService {
 
 			// [MarketWoker - 차트]
 			// DTO 자체를 Redis Topic으로 발행 (MarketWorker가 받음)
-			redissonClient.getTopic(topicKey).publish(liveCandle.toCsv());
+			redissonClient.getTopic(topicKey).publish(liveCandle);
 		}
 	}
 
@@ -220,8 +220,8 @@ public class MarketDataService {
 				// Redis에 저장
 				for (CandleDTO candle : candleList) {
 					String zsetKey = "candle:1m:" + candle.getTokenId();
-					RScoredSortedSet<String> zset = redissonClient.getScoredSortedSet(zsetKey);
-					zset.add((double)candle.getCandleTime(), candle.toCsv());
+					RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(zsetKey);
+					zset.add((double)candle.getCandleTime(), candle);
 					zset.removeRangeByRank(0, -1001);
 					// zset.expire(24, TimeUnit.HOURS);
 				}

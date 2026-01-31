@@ -5,7 +5,6 @@ import lombok.*;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
-
 @Getter
 @Setter
 @Builder
@@ -20,15 +19,4 @@ public class CandleDTO implements Serializable {
     private BigDecimal lowPrice;        // 저가
     private BigDecimal closingPrice;    // 종가
     private BigDecimal tradeVolume;     // 거래량
-
-    public String toCsv() {
-        return String.format("%d,%d,%s,%s,%s,%s,%s",
-                candleTime,
-                unit,
-                openingPrice.toPlainString(),
-                highPrice.toPlainString(),
-                lowPrice.toPlainString(),
-                closingPrice.toPlainString(),
-                tradeVolume.toPlainString());
-    }
 }
