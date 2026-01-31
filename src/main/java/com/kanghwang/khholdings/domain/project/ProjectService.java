@@ -192,7 +192,7 @@ public class ProjectService {
 
 	// 토큰 소각
 	@Transactional
-	public void burnToken(Long tokenId) {
+	public List<CancelDTO>  burnToken(Long tokenId) {
 
 		// 토큰 존재 여부 확인
 		Map<String, Object> tokenStatus = projectRepository.checkTokenStatus(tokenId);
@@ -210,17 +210,19 @@ public class ProjectService {
 			.or(() -> Optional.ofNullable(projectRepository.getIssuePrice(tokenId)))
 			.orElseThrow(() -> new IllegalArgumentException("현재 시세를 찾을 수 없습니다."));
 
+		List<CancelDTO> resultList = new ArrayList<>();
+
 		// 2. 대상자 조회
 		List<SnapshotDTO> holders = projectRepository.resultSnapshot(tokenId);
 		if (holders == null || holders.isEmpty()) {
 			projectRepository.deleteToken(tokenId);
-			return;
-//			throw new IllegalArgumentException("토큰 보유 대상자가 없습니다.");
+			return resultList;
 		}
 
 		// 3. batch 처리
 		final int BATCH_SIZE = 1000;
 		List<BurnDTO> list = new ArrayList<>(BATCH_SIZE);
+
 
 		for (SnapshotDTO holder : holders) {
 
@@ -230,6 +232,12 @@ public class ProjectService {
 			Long txId1 = snowflakeIdGenerator.nextId();
 			Long txId2 = snowflakeIdGenerator.nextId();
 			Long tradeId = snowflakeIdGenerator.nextId();
+
+			resultList.add(CancelDTO.builder()
+				.transactionId(tradeId)
+				.walletId(holder.getWalletId())
+				.amount(cashAmount)
+				.build());
 
 			BurnDTO burnDTO = BurnDTO.builder()
 				.txId1(txId1)
@@ -255,10 +263,13 @@ public class ProjectService {
 		// 남은 데이터 처리
 		if (!list.isEmpty()) {
 			projectRepository.burnTokenBatch(list);
+			list.clear();
 		}
 
 		// 토큰 삭제
 		projectRepository.deleteToken(tokenId);
+
+		return resultList;
 	}
 
 	// 토큰 발행
