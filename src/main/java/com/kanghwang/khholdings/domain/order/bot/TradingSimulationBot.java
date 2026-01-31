@@ -5,13 +5,13 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.service.OrderService;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
@@ -135,7 +135,6 @@ public class TradingSimulationBot {
 
 		if (targetToken == null || targetToken.getMarketPrice() == null) {
 			log.warn(">>>> [BOT] 타겟 토큰 정보를 찾을 수 없습니다.");
-			return;
 		}
 
 		BigDecimal currentPrice = targetToken.getMarketPrice();
