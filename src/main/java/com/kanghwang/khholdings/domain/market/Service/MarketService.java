@@ -13,6 +13,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.market.MarketRepository;
@@ -38,9 +39,9 @@ public class MarketService {
     public List<TokenListDTO> selectAll() {
 
         long start = System.currentTimeMillis();
-        log.info("API 시작");
+        log.info("종목 전체 조회 -API 시작");
 
-        // 1. Redis Map에서 실시간 데이터 조회
+        // 1. Redis Map에서 실시간 데이터 조회(현재 redis에 한 건도 없을 때만 db 가게 돼있음...)
         RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
         List<TokenListDTO> list = new ArrayList<>(marketInfoMap.readAllValues());
 
@@ -71,7 +72,7 @@ public class MarketService {
             return volB.compareTo(volA);
         });
 
-        log.info("로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start));
+        log.info("종목 전체 조회 - 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start));
 
         return list == null ? new ArrayList<>() : list;
     }
@@ -84,13 +85,19 @@ public class MarketService {
     // 차트 조회 [1]
     public List<CandleDTO> selectCandles(Long tokenId, int unit, long start, long end) {
 
+        long start3 = System.currentTimeMillis();
+        log.info("차트 조회 [1] - 시작");
+
         String cacheKey = String.format("candle:%s:%d", unit + "m", tokenId); // Redis 캐시 키
         long currentMinute = OffsetDateTime.now().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
         String liveCandleKey = String.format("candle:1m:%d:%d", tokenId, currentMinute); // Redis 실시간 키
 
+        long redisStart = System.currentTimeMillis();
+        log.info("차트 조회 - redis 조회");
         // 1. Redis 캐시 조회
         RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(cacheKey);
         List<CandleDTO> resultList = new ArrayList<>(zset.valueRange(start, true, end, true));
+        log.info("차트 조회 redis 조회 - 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start3));
 
         // 2. 캐시된 데이터에 없는 범위
         boolean isMissing = false;
@@ -130,34 +137,46 @@ public class MarketService {
             }
         }
 
+        log.info("차트 조회 [1] 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start3));
         return resultList;
     }
 
-    // 차트 조회 [2] - redis에 없을 시 DB 로드 및 redis에 저장
+    // 차트 조회 [2] - redis에 없을 시 DB 로드 및 redis에 저장 (redis + db)
     private List<CandleDTO> synchronizedLoadFromDb(Long tokenId, int unit, long start, long end, RScoredSortedSet<CandleDTO> zset) {
+
+        long start2 = System.currentTimeMillis();
+        log.info("차트 조회 [2]");
+
         RLock lock = redissonClient.getLock("lock:candles:" + tokenId);
         try {
             if (lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                // 재확인
+                // 1. Redis 현재 상황 파악
                 Collection<CandleDTO> cached = zset.valueRange(start, true, end, true);
-                if (!cached.isEmpty()) {
-                    return new ArrayList<>(cached);
+                List<CandleDTO> result = new ArrayList<>(cached);
+
+                // 2. 가장 오래된 캐시 데이터 확인
+                long oldestCachedTime = result.isEmpty() ? end + 1 : result.get(0).getCandleTime();
+
+                // 3. 만약 요청한 시작 시간(start)보다 캐시된 데이터가 더 미래라면 (과거가 비어있다면)
+                if (oldestCachedTime > start) {
+                    // DB 조회
+                    List<CandleDTO> dbData = marketRepository.selectCandles(tokenId, unit, start, oldestCachedTime - 1);
+
+                    if (dbData.isEmpty()) {
+                        return new ArrayList<>();
+                    }
+
+                    Map<CandleDTO, Double> toCache = new HashMap<>();
+                    for (CandleDTO candle : dbData) {
+                        toCache.put(candle, (double) candle.getCandleTime());
+                    }
+                    zset.addAll(toCache);
+
+                    result.addAll(0, dbData);
+
                 }
 
-                // DB 조회
-                List<CandleDTO> dbData = marketRepository.selectCandles(tokenId, unit, start, end);
-                if (dbData.isEmpty()) {
-                    return new ArrayList<>();
-                }
-
-                Map<CandleDTO, Double> toCache = new HashMap<>();
-                for (CandleDTO candle : dbData) {
-                    toCache.put(candle, (double) candle.getCandleTime());
-                }
-
-                zset.addAll(toCache);
-
-                return dbData;
+                return result;
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -166,6 +185,9 @@ public class MarketService {
                 if (lock.isHeldByCurrentThread()) lock.unlock();
             }
         }
+
+        log.info("차트 조회 [2] 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start2));
+
         return new ArrayList<>();
     }
 
@@ -228,5 +250,22 @@ public class MarketService {
     // 체결 조회
     public List<TradeDTO> selectAllTradePrice(Long tokenId) {
         return marketRepository.selectAllTradePrice(tokenId);
+    }
+
+    // 특정 토큰 OHLCV 조회
+    public TokenListDTO selectTokenOhlcv(Long tokenId) {
+
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+        TokenListDTO token = marketInfoMap.get(tokenId);
+
+        if (token == null) {
+            token = marketRepository.selectTokenOhlcv(tokenId);
+
+            if (token != null) {
+                marketInfoMap.put(tokenId, token);
+            }
+        }
+
+        return token;
     }
 }
