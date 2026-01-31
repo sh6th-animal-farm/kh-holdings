@@ -97,6 +97,7 @@ public class MarketWorker {
 			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
 					+ " 토큰명: " + event.getTokenName()
 					+ ", 현재가: " + event.getMarketPrice()
+					+ ", 시가: " + event.getOpenPrice()
 					+ ", 고가: " + event.getHighPrice()
 					+ ", 저가: " + event.getLowPrice()
 					+ ", 등락률: " + event.getChangeRate() + "%"

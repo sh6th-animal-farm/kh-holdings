@@ -66,6 +66,11 @@ public class MarketDataService {
 			// 현재가
 			token.setMarketPrice(currentPrice);
 
+			// 시가
+			if (token.getOpenPrice() == null || token.getOpenPrice().compareTo(BigDecimal.ZERO) == 0) {
+				token.setOpenPrice(currentPrice);
+			}
+
 			// 고가
 			if (token.getHighPrice() == null || currentPrice.compareTo(token.getHighPrice()) > 0) {
 				token.setHighPrice(currentPrice);
