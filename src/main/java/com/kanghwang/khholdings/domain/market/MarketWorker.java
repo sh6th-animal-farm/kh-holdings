@@ -1,5 +1,6 @@
 package com.kanghwang.khholdings.domain.market;
 
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RPatternTopic;
 import org.redisson.api.RTopic;
@@ -61,23 +62,22 @@ public class MarketWorker {
 		// [차트]
 		RPatternTopic candleTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "candle:topic:*");
 
-		// [이전] 리스너 타입을 candleDTO로 명시
-		// [수정] String.class로 받음 (직렬화 오버헤드 최소화)
-		candleTopic.addListener(String.class, (pattern, channel, csvData) -> {
+		// 리스너 타입을 candleDTO로 명시
+		candleTopic.addListener(CandleDTO.class, (pattern, channel, event) -> {
 			try {
 				String channelStr = channel.toString();
 				String tokenId = channelStr.substring(channelStr.lastIndexOf(":") + 1);
 
-				messagingTemplate.convertAndSend("/topic/candles/" + tokenId, csvData);
+				messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
 
-				System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트: " + csvData);
-//			System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
-//					+ ", 시가: " + event.getOpeningPrice()
-//					+ ", 고가: " + event.getHighPrice()
-//					+ ", 저가: " + event.getLowPrice()
-//					+ ", 종가: " + event.getClosingPrice()
-//					+ ", 거래량: " + event.getTradeVolume()
-//					+ ", 캔들 시간: " + event.getCandleTime());
+				System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트: " + event);
+			System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
+					+ ", 시가: " + event.getOpeningPrice()
+					+ ", 고가: " + event.getHighPrice()
+					+ ", 저가: " + event.getLowPrice()
+					+ ", 종가: " + event.getClosingPrice()
+					+ ", 거래량: " + event.getTradeVolume()
+					+ ", 캔들 시간: " + event.getCandleTime());
 			} catch (Exception e) {
 				log.error("[MarketWorker] OHLCV 및 차트 업데이트 송신 오류: ", e);
 			}
