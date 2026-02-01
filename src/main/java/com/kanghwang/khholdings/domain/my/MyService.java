@@ -1,13 +1,13 @@
 package com.kanghwang.khholdings.domain.my;
 
-import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
-import com.kanghwang.khholdings.domain.my.dto.TxHistsSearchDTO;
-import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
-import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
+import com.kanghwang.khholdings.domain.my.dto.MyTransactionHistDTO;
+import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
 
 @Service
 public class MyService {
@@ -16,7 +16,7 @@ public class MyService {
 	private MyRepository myRepository;
 
 	// 특정 계좌 및 지갑 조회
-	public List<WalletDTO> selectWalletById(Long walletId){
+	public WalletDTO selectWalletById(Long walletId){
 		return myRepository.selectWalletById(walletId);
 	}
 
@@ -26,8 +26,12 @@ public class MyService {
 	}
 
 	// 나의 거래 내역 조회(필터 조회, 기간 조회, 페이징)
-	public List<TransactionRequestDTO> selectTxHistByWalletId(TxHistsSearchDTO searchDTO){
-		return myRepository.selectTxHistByWalletId(searchDTO);
+	public List<MyTransactionHistDTO> selectMyTransactionHist(Long walletId,
+				String category,
+				Integer period,
+				Integer page){
+		Integer offset = (page - 1) * 10; // offset만큼 건너뛰고 10개 조회
+		return myRepository.selectMyTransactionHist(walletId, category, period, offset);
 	}
 
 	// 계좌 연동

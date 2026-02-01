@@ -39,7 +39,7 @@ public class OrderService {
 
 	// 매수/매도 주문
 	@Transactional
-	public boolean placeOrder(OrderRequestDTO orderDTO) {
+	public void placeOrder(OrderRequestDTO orderDTO) {
 
 		// 1. Snowflake ID를 사용하여 주문 번호 생성
 		Long orderId = snowflakeIdGenerator.nextId();
@@ -71,12 +71,10 @@ public class OrderService {
 				orderRedisService.processOrder(orderDTO);
 			}
 		});
-
-		return true;
 	}
 
 	// 주문 취소
-	public boolean cancelOrder(Long tokenId, Long orderId) {
-		return orderRedisService.cancelOrder(tokenId, orderId);
+	public void cancelOrder(Long tokenId, Long orderId) {
+		orderRedisService.cancelOrder(tokenId, orderId);
 	}
 }

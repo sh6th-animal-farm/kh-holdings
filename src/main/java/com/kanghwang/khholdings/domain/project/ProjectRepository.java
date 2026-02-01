@@ -45,4 +45,7 @@ public interface ProjectRepository {
 
 	// 토큰 존재 여부 확인
 	Map<String, Object> checkTokenStatus(Long tokenId);
+
+	// 토큰 발행가 조회
+	BigDecimal getIssuePrice(Long tokenId);
 }

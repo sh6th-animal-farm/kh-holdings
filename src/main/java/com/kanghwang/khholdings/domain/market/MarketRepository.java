@@ -9,7 +9,7 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 
 @Mapper
 public interface MarketRepository {
@@ -33,8 +33,11 @@ public interface MarketRepository {
 	List<TradeDTO> selectAllTradePrice(Long tokenId);
 
 	// 차트 조회
-	List<CandleDTO> selectCandles(Long tokenId, int unit, int limit);
+	List<CandleDTO> selectCandles(Long tokenId, int unit, long start, long end);
 
 	// 미체결 내역 조회
 	List<PendingDTO> selectPending(Long tokenId, Long walletId);
+
+	// 토큰 OHLCV 조회
+	TokenListDTO selectTokenOhlcv(Long tokenId);
 }

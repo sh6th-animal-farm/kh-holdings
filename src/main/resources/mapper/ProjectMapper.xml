@@ -208,7 +208,7 @@
 
     <update id="burnTokenBatch" parameterType="java.util.List">
         -- 토큰 소각
-        WITH updates(wallet_id, token_id, amount, cash_amount, tx_id1, tx_id2, h_val1, h_val2) AS (
+        WITH updates(wallet_id, token_id, amount, cash_amount, trade_id, tx_id1, tx_id2, h_val1, h_val2) AS (
             VALUES
             <foreach collection="list" item="item" separator=",">
                 (
@@ -216,6 +216,7 @@
                 #{item.tokenId}::bigint,
                 #{item.amount}::numeric,
                 #{item.cashAmount}::numeric,
+                #{item.tradeId}::bigint,
                 #{item.txId1}::bigint,
                 #{item.txId2}::bigint,
                 #{item.hashValue1}::text,
@@ -249,6 +250,7 @@
         )
         INSERT INTO transaction_hists (
             transaction_id,
+            trade_id,
             wallet_id,
             transaction_type,
             direction,
@@ -259,6 +261,7 @@
         )
         SELECT
             v.tx_id,
+            u.trade_id,
             u.wallet_id,
             'BURN'::transaction_type_enum,
             v.t_dir,
@@ -287,12 +290,14 @@
 
     <insert id="openToken" parameterType="OpenDTO">
         INSERT INTO tokens (
+            token_id,
             token_name,
             ticker_symbol,
             total_supply,
             issue_price,
             created_at
         ) VALUES (
+             #{tokenId},
              #{tokenName},
              #{tickerSymbol},
              #{totalSupply},
@@ -306,6 +311,14 @@
         SELECT
             token_id,
             deleted_at
+        FROM tokens
+        WHERE token_id = #{tokenId}
+    </select>
+
+    <select id="getIssuePrice">
+        -- 토큰 발행가 조회
+        SELECT
+            issue_price
         FROM tokens
         WHERE token_id = #{tokenId}
     </select>

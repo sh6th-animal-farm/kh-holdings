@@ -9,14 +9,15 @@
         WITH BaseTime AS (
             SELECT
                 CASE
-                    WHEN CURRENT_TIME <![CDATA[ < ]]> '09:00:00' THEN CURRENT_DATE - INTERVAL '15 hours' -- 어제 09:00
-                    ELSE CURRENT_DATE <![CDATA[ + ]]> INTERVAL '9 hours' -- 오늘 09:00
+                    WHEN CURRENT_TIME AT TIME ZONE 'Asia/Seoul' <![CDATA[ < ]]> '09:00:00'
+                    THEN EXTRACT(EPOCH FROM (CURRENT_DATE - INTERVAL '1 day'))::BIGINT
+                    ELSE EXTRACT(EPOCH FROM CURRENT_DATE)::BIGINT
                 END as start_time
         ),
         DailyStats AS (
             SELECT
                 token_id,
-                SUM(trade_amount) as daily_vol,
+                SUM(trade_volume) as daily_vol,
                 MAX(high_price) as daily_high, -- 오늘 최고가
                 MIN(low_price) as daily_low    -- 오늘 최저가
             FROM token_quotes, BaseTime
@@ -185,20 +186,82 @@
     <select id="selectCandles" resultType="CandleDTO">
         SELECT
             token_id,
-            (EXTRACT(EPOCH FROM candle_time))::BIGINT AS candleTime,
+            candle_time,
             opening_price,
             high_price ,
             low_price,
             closing_price,
-            trade_volume
+            trade_volume,
+            unit
         FROM
             token_quotes
         WHERE
             token_id = #{tokenId}
         AND
-            unit = 1
+            unit = #{unit}
+        AND
+            candle_time BETWEEN #{start} AND #{end}
         ORDER BY
             candle_time
-        LIMIT #{limit}
+        LIMIT 1000
+    </select>
+
+    <select id="selectTokenOhlcv" resultType="TokenListDTO">
+        WITH BaseTime AS (
+            SELECT
+                CASE
+                    WHEN (CURRENT_TIME AT TIME ZONE 'Asia/Seoul') <![CDATA[ < ]]> '09:00:00'::time
+                    THEN EXTRACT(EPOCH FROM (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' - INTERVAL '15 hours'))::BIGINT
+                    ELSE EXTRACT(EPOCH FROM (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' + INTERVAL '9 hours'))::BIGINT
+            END as start_time
+        )
+        -- 1. 가격 정보 (현재가, 시가) 계산
+        Prices AS (
+            SELECT
+                t.token_id,
+                COALESCE(
+                    (SELECT closing_price FROM token_quotes
+                    WHERE token_id = t.token_id
+                    ORDER BY candle_time DESC LIMIT 1),
+                    t.issue_price) as market_price,
+                COALESCE(
+                    (SELECT opening_price FROM token_quotes
+                    WHERE token_id = t.token_id AND candle_time >= (SELECT start_time FROM BaseTime)
+                    ORDER BY candle_time ASC LIMIT 1),
+                    (SELECT closing_price FROM token_quotes
+                    WHERE token_id = t.token_id
+                    ORDER BY candle_time DESC LIMIT 1),
+                    t.issue_price) as open_price
+            FROM tokens t
+            WHERE t.token_id = #{tokenId}),
+        -- 2. 당일 집계 정보 계산
+            DailyStats AS (
+                SELECT
+                    token_id,
+                    MAX(high_price) as daily_high,
+                    MIN(low_price) as daily_low,
+                    SUM(trade_amount) as daily_vol
+                FROM token_quotes
+                WHERE candle_time >= (SELECT start_time FROM BaseTime)
+                AND token_id = #{tokenId}
+                GROUP BY token_id)
+            -- 3. 최종 합체 및 등락률 계산
+            SELECT
+                t.token_id,
+                t.token_name,
+                t.ticker_symbol,
+                p.market_price as marketPrice,
+                p.open_price as openPrice,
+                COALESCE(ds.daily_high, p.market_price) as highPrice,
+                COALESCE(ds.daily_low, p.market_price) as lowPrice,
+                COALESCE(ds.daily_vol, 0) as dailyTradeVolume,
+                CASE
+                    WHEN p.open_price = 0 THEN 0
+                    ELSE ROUND(((p.market_price - p.open_price) / p.open_price * 100), 2)
+                END as changeRate
+            FROM tokens t
+            JOIN Prices p ON t.token_id = p.token_id
+            LEFT JOIN DailyStats ds ON t.token_id = ds.token_id
+            WHERE t.token_id = #{tokenId}
     </select>
 </mapper>
