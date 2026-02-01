@@ -5,6 +5,7 @@
 
  import org.springframework.beans.factory.annotation.Autowired;
  import org.springframework.http.ResponseEntity;
+ import org.springframework.web.bind.annotation.GetMapping;
  import org.springframework.web.bind.annotation.PathVariable;
  import org.springframework.web.bind.annotation.PostMapping;
  import org.springframework.web.bind.annotation.RequestBody;
@@ -78,6 +79,17 @@
 
 		return ApiResponseUtil.ok("배당 정산이 완료되었습니다.", list);
  	}
+
+	 // 토큰 존재 여부 확인
+	 @GetMapping("/check/{tokenId}")
+	 public ResponseEntity<ApiResponse<Boolean>> checkTokenStatus(@PathVariable Long tokenId) {
+		 Boolean isOk = projectService.checkTokenStatus(tokenId);
+		 if (!isOk) {
+			 return ApiResponseUtil.ok("이미 소각되었거나 존재하지 않는 토큰입니다.", false);
+		 }
+
+		 return ApiResponseUtil.ok("존재하는 토큰입니다.", true);
+	 }
 
  	// 토큰 소각
  	@PostMapping("/close/{tokenId}")
