@@ -57,13 +57,13 @@ public class RedisKeyManager {
         return getPrefix() + "market:ranking";
     }
 
-    // 9. 종목 정보 (TOPIC): 웹소켓을 통해 토큰 정보를 부라우저에 보내줄 때 사용
+    // 9. 종목 정보 (TOPIC): 웹소켓을 통해 토큰 정보를 브라우저에 보내줄 때 사용
     public String getMarketUpdateTopicKey() {
-        return getPrefix() +"market:update:topic";
+        return getPrefix() + "market:update:topic";
     }
 
     // 10.
-    public String getCandleKey(Long tokenId, Long minute) {
-        return "candle:" + tokenId + ":" + minute;
+    public String getCandleKey(Long tokenId, int unit, Long minute) {
+        return "candle:" + unit + ":" + tokenId + ":" + minute;
     }
 }

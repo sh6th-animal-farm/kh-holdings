@@ -50,7 +50,8 @@ public class MarketService {
 
             if (list != null && !list.isEmpty()) {
 
-                RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
+                RScoredSortedSet<Long> rankingSet = redissonClient
+                        .getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
                 list.forEach(dto -> {
                     if (dto.getDailyTradeVolume() != null) {
                         dto.setDailyTradeVolume(dto.getDailyTradeVolume().setScale(0, RoundingMode.DOWN));
@@ -61,7 +62,8 @@ public class MarketService {
                     rankingSet.add(dto.getDailyTradeVolume().doubleValue(), dto.getTokenId());
                 });
 
-                Map<Long, TokenListDTO> map = list.stream().collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
+                Map<Long, TokenListDTO> map = list.stream()
+                        .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
                 marketInfoMap.putAll(map);
             }
         }
@@ -90,7 +92,7 @@ public class MarketService {
 
         String cacheKey = String.format("candle:%s:%d", unit + "m", tokenId); // Redis 캐시 키
         long currentMinute = OffsetDateTime.now().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
-        String liveCandleKey = String.format("candle:1m:%d:%d", tokenId, currentMinute); // Redis 실시간 키
+        String liveCandleKey = redisKeyManager.getCandleKey(tokenId, unit, currentMinute); // Redis 실시간 키
 
         long redisStart = System.currentTimeMillis();
         log.info("차트 조회 - redis 조회");
@@ -114,9 +116,11 @@ public class MarketService {
         if (isMissing) {
             List<CandleDTO> dbData = synchronizedLoadFromDb(tokenId, unit, start, end, zset);
 
-            Map<Long, CandleDTO> mergedMap  = new TreeMap<>();
-            for (CandleDTO c : dbData) mergedMap.put(c.getCandleTime(), c);
-            for (CandleDTO c : resultList) mergedMap.put(c.getCandleTime(), c);
+            Map<Long, CandleDTO> mergedMap = new TreeMap<>();
+            for (CandleDTO c : dbData)
+                mergedMap.put(c.getCandleTime(), c);
+            for (CandleDTO c : resultList)
+                mergedMap.put(c.getCandleTime(), c);
 
             resultList = new ArrayList<>(mergedMap.values());
         }
@@ -142,7 +146,8 @@ public class MarketService {
     }
 
     // 차트 조회 [2] - redis에 없을 시 DB 로드 및 redis에 저장 (redis + db)
-    private List<CandleDTO> synchronizedLoadFromDb(Long tokenId, int unit, long start, long end, RScoredSortedSet<CandleDTO> zset) {
+    private List<CandleDTO> synchronizedLoadFromDb(Long tokenId, int unit, long start, long end,
+            RScoredSortedSet<CandleDTO> zset) {
 
         long start2 = System.currentTimeMillis();
         log.info("차트 조회 [2]");
@@ -163,7 +168,7 @@ public class MarketService {
                     List<CandleDTO> dbData = marketRepository.selectCandles(tokenId, unit, start, oldestCachedTime - 1);
 
                     if (dbData.isEmpty()) {
-                        return new ArrayList<>();
+                        return result;
                     }
 
                     Map<CandleDTO, Double> toCache = new HashMap<>();
@@ -182,7 +187,8 @@ public class MarketService {
             Thread.currentThread().interrupt();
         } finally {
             if (lock.isHeldByCurrentThread()) {
-                if (lock.isHeldByCurrentThread()) lock.unlock();
+                if (lock.isHeldByCurrentThread())
+                    lock.unlock();
             }
         }
 
@@ -194,8 +200,8 @@ public class MarketService {
     // 차트 조회 [3] - Redis에서 가져온 캔들 DTO로 변환
     private CandleDTO fetchLiveCandle(String key, Long tokenId, int unit, long time, List<CandleDTO> resultList) {
         Map<String, String> raw = redissonClient
-            .<String, String>getMap(key, org.redisson.client.codec.StringCodec.INSTANCE)
-            .readAllMap();
+                .<String, String>getMap(key, org.redisson.client.codec.StringCodec.INSTANCE)
+                .readAllMap();
 
         // 거래가 없는 경우
         if (raw == null || raw.isEmpty() || !raw.containsKey("open")) {
@@ -214,15 +220,15 @@ public class MarketService {
         }
 
         return CandleDTO.builder()
-            .tokenId(tokenId)
-            .unit(unit)
-            .candleTime(time)
-            .openingPrice(new BigDecimal(raw.get("open")))
-            .highPrice(new BigDecimal(raw.get("high")))
-            .lowPrice(new BigDecimal(raw.get("low")))
-            .closingPrice(new BigDecimal(raw.get("close")))
-            .tradeVolume(new BigDecimal(raw.get("vol")))
-            .build();
+                .tokenId(tokenId)
+                .unit(unit)
+                .candleTime(time)
+                .openingPrice(new BigDecimal(raw.get("open")))
+                .highPrice(new BigDecimal(raw.get("high")))
+                .lowPrice(new BigDecimal(raw.get("low")))
+                .closingPrice(new BigDecimal(raw.get("close")))
+                .tradeVolume(new BigDecimal(raw.get("vol")))
+                .build();
     }
 
     // 미체결 내역 조회
