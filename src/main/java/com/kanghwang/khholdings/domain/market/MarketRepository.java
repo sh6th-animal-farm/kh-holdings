@@ -37,4 +37,7 @@ public interface MarketRepository {
 
 	// 미체결 내역 조회
 	List<PendingDTO> selectPending(Long tokenId, Long walletId);
+
+	// 토큰 OHLCV 조회
+	TokenListDTO selectTokenOhlcv(Long tokenId);
 }
