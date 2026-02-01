@@ -75,57 +75,101 @@
             LIMIT 10
         OFFSET (#{page} - 1) * 10
     </select>
-
-    <select id="selectTxHistByWalletId" resultType="TransactionHistDTO">
+        
+    <select id="selectMyTransactionHist" resultType="MyTransactionHistDTO">
         SELECT
-            MIN(th.created_at) AS created_at,
+            MIN(th.created_at) AS createdAt,
             CASE
                 WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'BUY' THEN 'BUY'
                 WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'SELL' THEN 'SELL'
                 ELSE th.transaction_type::text
-                END AS transaction_type,
-            COALESCE(MAX(t.token_name), '-') AS token_name,
-            COALESCE(MAX(t.token_id), 0) AS token_id,
+            END AS transactionType,
+
+            COALESCE(MAX(t.token_name), '-') AS tokenName,
+            COALESCE(MAX(t.ticker_symbol), '-') AS tickerSymbol,
+
+            -- executedAmount: CASH IN 이면 +, CASH OUT 이면 - 로 집계
+            SUM(
+                    CASE
+                        WHEN th.asset_type = 'CASH' AND th.direction = 'IN' THEN th.amount
+                        WHEN th.asset_type = 'CASH' AND th.direction = 'OUT' THEN -th.amount
+                        ELSE 0
+                        END
+            ) AS executedAmount,
+
+            -- executedVolume: 수량은 양수로 표기하기 위해 ABS 처리
+            ABS(
+                SUM(
+                    CASE
+                        WHEN th.asset_type = 'TOKEN' THEN th.amount
+                        ELSE 0
+                    END
+                )
+            ) AS executedVolume,
+
+            -- executedPrice: 단가는 양수로 표기하기 위해 ABS 처리
             CASE
-                WHEN th.transaction_type = 'TRADE' THEN
-                    ABS(SUM(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END)) /
-                    NULLIF(SUM(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END), 0)
-                ELSE NULL
-                END AS unit_price,
-            SUM(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END) AS transaction_volume,
-            MAX(CASE WHEN th.asset_type = 'TOKEN' THEN th.balance_after END) AS token_balance_after,
-            SUM(CASE WHEN th.asset_type = 'CASH' THEN th.amount ELSE 0 END) AS transaction_amount,
-            MAX(CASE WHEN th.asset_type = 'CASH' THEN th.balance_after ELSE NULL END) AS balance_after,
-            COALESCE(th.trade_id, th.transaction_id) AS group_id
+                WHEN th.transaction_type IN ('TRADE', 'PASS', 'FAIL', 'BURN') THEN
+                    COALESCE(
+                        ABS(
+                            SUM(CASE WHEN th.asset_type = 'CASH' AND th.direction = 'IN' THEN th.amount
+                                     WHEN th.asset_type = 'CASH' AND th.direction = 'OUT' THEN -th.amount ELSE 0 END) /
+                            NULLIF(SUM(CASE WHEN th.asset_type = 'TOKEN' THEN th.amount ELSE 0 END), 0)
+                        ),
+                        0
+                    )
+                ELSE 0
+            END AS executedPrice,
+
+            -- balanceAfter: 잔액은 그루핑된 내역 중 가장 최신 데이터를 가져옴
+            MAX(CASE WHEN th.asset_type = 'CASH' THEN th.balance_after ELSE 0 END) AS balanceAfter
+
         FROM transaction_hists th
-                 LEFT JOIN orders o ON th.order_id = o.order_id
-                 LEFT JOIN tokens t ON o.token_id = t.token_id
-        WHERE th.wallet_id = #{walletId}
-        <if test="category != null and category != ''">
-            AND th.transaction_type = #{category}
-        </if>
-        <if test="period != null and period != ''">
+             LEFT JOIN orders o ON th.order_id = o.order_id
+             LEFT JOIN tokens t ON o.token_id = t.token_id
+
+        <where>
+            th.wallet_id = #{walletId}
+
             <choose>
-                <when test="period == '1W'">
-                    AND created_at >= NOW() - INTERVAL '7 days'
+                <when test="category == 'TOKEN'">
+                    AND th.transaction_type = 'TRADE'
                 </when>
-                <when test="period == '1M'">
-                    AND created_at >= NOW() - INTERVAL '1 month'
+                <when test="category == 'BUY'">
+                    AND th.transaction_type = 'TRADE' AND o.order_side = 'BUY'
                 </when>
-                <when test="period == '3M'">
-                    AND created_at >= NOW() - INTERVAL '3 months'
+                <when test="category == 'SELL'">
+                    AND th.transaction_type = 'TRADE' AND o.order_side = 'SELL'
                 </when>
-                <when test="period == '6M'">
-                    AND created_at >= NOW() - INTERVAL '6 months'
+                <when test="category == 'PROJECT'">
+                    AND th.transaction_type IN ('PASS', 'FAIL', 'DIVIDEND', 'BURN')
                 </when>
+                <when test="category == 'PASS' or category == 'FAIL' or category == 'DIVIDEND' or category == 'BURN'">
+                    AND th.transaction_type = #{category}::transaction_type_enum
+                </when>
+                <otherwise>
+                    AND th.transaction_type IN ('TRADE', 'PASS', 'FAIL', 'DIVIDEND', 'BURN')
+                </otherwise>
             </choose>
-        </if>
+
+            <if test="period > 0">
+                AND th.created_at >= NOW() - INTERVAL '${period} months'
+            </if>
+        </where>
+
         GROUP BY
-            COALESCE(th.trade_id, th.transaction_id),
+            CASE
+                -- 1. DIVIDEND는 무조건 개별 행 (transaction_id로 분리)
+                WHEN th.transaction_type = 'DIVIDEND' THEN th.transaction_id::text
+                -- 2. BURN과 TRADE는 trade_id가 같다면 무조건 하나로 묶음
+                WHEN th.trade_id IS NOT NULL THEN th.trade_id::text
+                -- 3. 나머지는 개별 처리
+                ELSE th.transaction_id::text
+            END,
             th.transaction_type
-        ORDER BY MIN(th.created_at) DESC
-            LIMIT 10
-        OFFSET <![CDATA[ (#{page} - 1) * 10 ]]>
+
+        ORDER BY createdAt DESC
+            LIMIT 10 OFFSET #{offset}
     </select>
 
     <select id="selectAccount">

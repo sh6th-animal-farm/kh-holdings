@@ -5,42 +5,62 @@
 
 <mapper namespace="com.kanghwang.khholdings.domain.market.MarketRepository">
 
-    <select id="selectAll" resultType="MarketDTO">
-        WITH minute_stats AS (
-            SELECT DISTINCT ON (token_id)
-                token_id,
-                closing_price AS market_price
-            FROM token_quotes
-            WHERE unit = '1m'::quote_unit_enum
-            ORDER BY token_id, created_at DESC
+    <select id="selectAll" resultType="TokenListDTO">
+        WITH BaseTime AS (
+            SELECT
+                CASE
+                    WHEN CURRENT_TIME AT TIME ZONE 'Asia/Seoul' <![CDATA[ < ]]> '09:00:00'
+                    THEN EXTRACT(EPOCH FROM (CURRENT_DATE - INTERVAL '1 day'))::BIGINT
+                    ELSE EXTRACT(EPOCH FROM CURRENT_DATE)::BIGINT
+                END as start_time
         ),
-        daily_stats AS (
-            SELECT DISTINCT ON (token_id)
+        DailyStats AS (
+            SELECT
                 token_id,
-                trade_volume AS daily_trade_volume
+                SUM(trade_volume) as daily_vol,
+                MAX(high_price) as daily_high, -- 오늘 최고가
+                MIN(low_price) as daily_low    -- 오늘 최저가
+            FROM token_quotes, BaseTime
+            WHERE candle_time <![CDATA[ >= ]]> start_time
+            GROUP BY token_id
+        ),
+        OpenPrice AS (
+            SELECT DISTINCT ON (token_id)
+                token_id, opening_price
+            FROM token_quotes q, BaseTime bt
+            WHERE q.candle_time <![CDATA[ >= ]]> bt.start_time
+            ORDER BY token_id, candle_time ASC
+        ),
+        LatestPrice AS (
+            SELECT DISTINCT ON (token_id)
+                token_id, closing_price
             FROM token_quotes
-            WHERE unit = '1d'::quote_unit_enum
-            ORDER BY token_id, created_at DESC
+            ORDER BY token_id, candle_time DESC
         )
         SELECT
-            t.token_id AS token_id,
-            t.token_name AS token_name,
-            t.ticker_symbol AS ticker_symbol,
-            COALESCE(ms.market_price, 0) AS market_price,
-            COALESCE(ds.daily_trade_volume, 0) AS daily_trade_volume
+            t.token_id,
+            t.token_name,
+            t.ticker_symbol,
+            COALESCE(lp.closing_price, t.issue_price) as marketPrice, -- 현재가(종가)
+            COALESCE(op.opening_price, lp.closing_price, t.issue_price) as openPrice, -- 시가
+            COALESCE(ds.daily_high, lp.closing_price, t.issue_price) as highPrice, -- 고가
+            COALESCE(ds.daily_low, lp.closing_price, t.issue_price) as lowPrice, -- 저가
+            COALESCE(ds.daily_vol, 0) as dailyTradeVolume
         FROM tokens t
-                 LEFT JOIN minute_stats ms ON t.token_id = ms.token_id
-                 LEFT JOIN daily_stats ds ON t.token_id = ds.token_id
-        ORDER BY ds.daily_trade_volume DESC NULLS LAST
+        LEFT JOIN DailyStats ds ON t.token_id = ds.token_id
+        LEFT JOIN OpenPrice  op ON t.token_id = op.token_id
+        LEFT JOIN LatestPrice lp ON t.token_id = lp.token_id
+        WHERE t.deleted_at IS null
+        ORDER BY dailyTradeVolume DESC
     </select>
 
-    <select id="selectBySearch" resultType="MarketDTO">
+    <select id="selectBySearch" resultType="TokenListDTO">
         WITH minute_stats AS (
             SELECT DISTINCT ON (token_id)
                 token_id,
                 closing_price AS market_price
             FROM token_quotes
-            WHERE unit = '1m'::quote_unit_enum
+            WHERE unit = 1
             ORDER BY token_id, created_at DESC
         ),
         daily_stats AS (
@@ -48,7 +68,7 @@
                 token_id,
                 trade_volume AS daily_trade_volume
             FROM token_quotes
-            WHERE unit = '1d'::quote_unit_enum
+            WHERE unit = 1440
             ORDER BY token_id, created_at DESC
         )
         SELECT
@@ -69,6 +89,25 @@
         ORDER BY ds.daily_trade_volume DESC NULLS LAST
     </select>
 
+    <!-- 미체결 내역 조회 -->
+    <select id="selectPending" resultType="PendingDTO">
+        SELECT
+            order_id,
+            order_side,
+            order_price,
+            order_volume,
+            remaining_token,
+            created_at
+        FROM orders
+        WHERE wallet_id = #{walletId}
+          AND token_id = #{tokenId}
+          AND order_type = 'LIMIT'::order_type_enum
+          AND remaining_token > 0
+          AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 토큰 현재가 조회 -->
     <select id="selectLatestTokenPrice">
         SELECT
             closing_price
@@ -79,5 +118,91 @@
         ORDER BY
             created_at DESC
             LIMIT 1
+    </select>
+
+    <!-- 매수 호가 조회 -->
+    <select id="selectAllOrderBuyPrice" resultType="OrderPriceDTO">
+        SELECT
+            order_price AS price,
+            SUM(remaining_token) AS totalVolume,
+            'BUY' AS side
+        FROM orders
+        WHERE token_id = #{tokenId}
+          AND order_side = 'BUY'::order_side_enum
+          AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+          AND order_type = 'LIMIT'::order_type_enum
+        <if test="price != null">
+            AND order_price >= #{price}
+        </if>
+        GROUP BY order_price
+        ORDER BY order_price ASC
+            LIMIT 20
+    </select>
+
+    <!-- 매도 호가 조회 -->
+    <select id="selectAllOrderSellPrice" resultType="OrderPriceDTO">
+        SELECT
+            order_price AS price,
+            SUM(remaining_token) AS totalVolume,
+            'SELL' AS side
+        FROM orders
+        WHERE token_id = #{tokenId}
+          AND order_side = 'SELL'::order_side_enum
+          AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+          AND order_type = 'LIMIT'::order_type_enum
+        <if test="price != null">
+            AND order_price &lt;= #{price}
+        </if>
+        GROUP BY order_price
+        ORDER BY order_price DESC
+            LIMIT 20
+    </select>
+
+    <!-- 체결 조회 -->
+    <select id="selectAllTradePrice" resultType="TradeDTO">
+        SELECT
+            MAX(CASE WHEN ts.asset_type = 'CASH'::asset_type_enum THEN ts.amount ELSE 0 END) /
+            NULLIF(MAX(CASE WHEN ts.asset_type = 'TOKEN'::asset_type_enum THEN ts.amount ELSE 0 END), 0) AS price,
+            MAX(CASE WHEN ts.asset_type = 'TOKEN'::asset_type_enum THEN ts.amount END) AS volume,
+            (
+                SELECT o2.order_side
+                FROM transaction_hists ts2
+                         JOIN orders o2 ON ts2.order_id = o2.order_id
+                WHERE ts2.trade_id = ts.trade_id
+                ORDER BY o2.created_at DESC
+                LIMIT 1
+            ) AS takerSide,
+            MAX(ts.created_at) AS createdAt
+        FROM transaction_hists ts
+        JOIN orders o ON ts.order_id = o.order_id
+        WHERE o.token_id = #{tokenId}
+          AND ts.transaction_type = 'TRADE'::transaction_type_enum
+        GROUP BY ts.trade_id
+        ORDER BY createdAt DESC
+        LIMIT 20
+    </select>
+
+    <!-- 차트 조회 -->
+    <select id="selectCandles" resultType="CandleDTO">
+        SELECT
+            token_id,
+            candle_time,
+            opening_price,
+            high_price ,
+            low_price,
+            closing_price,
+            trade_volume,
+            unit
+        FROM
+            token_quotes
+        WHERE
+            token_id = #{tokenId}
+        AND
+            unit = #{unit}
+        AND
+            candle_time BETWEEN #{start} AND #{end}
+        ORDER BY
+            candle_time
+        LIMIT 1000
     </select>
 </mapper>

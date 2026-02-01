@@ -1,30 +1,32 @@
 package com.kanghwang.khholdings.domain.order;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import org.redisson.api.*;
 import org.redisson.api.stream.StreamReadArgs;
-import org.redisson.codec.JsonJacksonCodec;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.kanghwang.khholdings.domain.market.Service.MarketDataService;
+import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -39,35 +41,15 @@ public class TradeWorker implements CommandLineRunner {
     private final OrderRepository orderRepository;
     private volatile boolean isRunning = true;
     private final CountDownLatch shutdownLatch = new CountDownLatch(1); // 종료 확인을 위한 래치 (1개의 스레드가 끝날 때까지 대기)
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
+    private final RedisKeyManager redisKeyManager;
+    private final MarketRepository marketRepository;
 
     // 체결 내역 벌크 인서트를 위한 버퍼
-    private final Queue<TransactionHistDTO> tradeBuffer = new ConcurrentLinkedQueue<>();
-
-    // 1분 봉 업데이트 용 Lua Script
-    private static final String luaScript = """
-            local c = redis.call('HMGET', KEYS[1], 'high', 'low', 'close', 'vol')
-            local price = tonumber(ARGV[1])
-            local vol = tonumber(ARGV[2])
-
-            if not c[1] then
-                -- 새 봉 생성
-                redis.call('HMSET', KEYS[1], 'open', price, 'high', price, 'low', price, 'close', price, 'vol', vol)
-            else
-                -- 기존 봉 업데이트
-                if price > tonumber(c[1]) then redis.call('HSET', KEYS[1], 'high', price) end
-                if price < tonumber(c[2]) then redis.call('HSET', KEYS[1], 'low', price) end
-                redis.call('HSET', KEYS[1], 'close', price)
-                redis.call('HINCRBYFLOAT', KEYS[1], 'vol', vol)
-            end
-            redis.call('EXPIRE', KEYS[1], 10800) -- 3시간 TTL
-            """;
+    private final Queue<TransactionHistDTO> transactionBuffer = new ConcurrentLinkedQueue<>();
 
     @Override
     public void run(String... args) throws Exception {
+        initializeMarketInfo(); // Redis 토큰 리스트(마켓) 정보 초기화
         Thread workerThread = new Thread(this::processStream);
         workerThread.setDaemon(true);
         workerThread.start();
@@ -89,8 +71,9 @@ public class TradeWorker implements CommandLineRunner {
     }
 
     private void processStream() {
+        log.info("현채 접속 중인 레디스 스트림 키: [{}]", redisKeyManager.getTradeStreamKey());
 
-        RStream<String, Object> stream = redissonClient.getStream("trade:stream:", new JsonJacksonCodec(objectMapper));
+        RStream<String, Object> stream = redissonClient.getStream(redisKeyManager.getTradeStreamKey());
         StreamMessageId lastId = StreamMessageId.ALL; // 처음부터 혹은 최신부터 읽기 설정 가능
 
         while (isRunning) {
@@ -101,22 +84,21 @@ public class TradeWorker implements CommandLineRunner {
                         StreamReadArgs.greaterThan(lastId).count(10).timeout(Duration.ofSeconds(1)));
 
                 // 데이터가 없으면 건너뛰기
-                if (messages.isEmpty())
+                if (messages.isEmpty()) {
                     continue;
+                }
 
                 for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
                     StreamMessageId currentId = entry.getKey(); // 현재 처리 중인 메시지의 ID
                     Object data = entry.getValue().get("data");
+
                     try {
                         // [1] 데이터 처리 로직
-                        if (data instanceof TransactionRequestDTO) {
+                        if (data instanceof TransactionRequestDTO transactionDTO) {
                             // 1. 체결 정산 처리
-                            TransactionRequestDTO transactionDTO = objectMapper.convertValue(data,
-                                    TransactionRequestDTO.class);
                             handleTransaction(transactionDTO);
-                        } else if (data instanceof RefundRequestDTO) {
+                        } else if (data instanceof RefundRequestDTO refundDTO) {
                             // 2. 취소 및 환불 처리
-                            RefundRequestDTO refundDTO = objectMapper.convertValue(data, RefundRequestDTO.class);
                             handleRefund(refundDTO);
                         }
 
@@ -126,8 +108,6 @@ public class TradeWorker implements CommandLineRunner {
                         // [3] 다음 읽기 지점을 현재 메시지 이후로 업데이트
                         lastId = currentId;
 
-                        // stream.remove(lastId); // Redis에서 정산 완료한 데이터 제거
-                        // lastId = entry.getKey(); // 이후 lastId보다 큰 데이터들을 읽어오기 위해 업데이트
                     } catch (Exception e) {
                         log.error("[TradeWorker] 정산 처리 중 오류 발생: ", e);
                     }
@@ -146,166 +126,57 @@ public class TradeWorker implements CommandLineRunner {
     }
 
     // [체결]
-    private void handleTransaction(TransactionRequestDTO requestDTO) {
+    private void handleTransaction(TransactionRequestDTO trade) {
 
         try {
+            // 이부분도 하나의 트랜잭션으로 묶어야 함
             // 1. [DB] 정산 후 생성된 OUTPUT을 SettlementResultDTO에 담음
             SettlementResultDTO result = new SettlementResultDTO();
-            orderRepository.p_process_transaction_settlement(requestDTO, result);
+            orderRepository.p_process_transaction_settlement(trade, result);
 
-            // 2. [DB] DB 기록 용 1분 봉 제작
-            updateRedisCandle(requestDTO);
+            // 2. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
+            enqueueTransactionLogs(trade, result);
 
-            // 3. [비동기 기록] 로그 생성 및 버퍼 추가
-            enqueueLogs(requestDTO, result);
-
-            log.info("[TradeWorker] 체결 정산 완료: TradeID {}", requestDTO.getTradeId());
+            log.info("[TradeWorker] 체결 정산 완료: TradeID {}", trade.getTradeId());
 
         } catch (Exception e) {
 
-            log.error("[TradeWorker] 체결 및 정산 실패: TradeID {}", requestDTO.getTradeId(), e);
+            log.error("[TradeWorker] 체결 및 정산 실패: TradeID {}", trade.getTradeId(), e);
 
-        }
-    }
-
-    // [DB] 1분 봉 집계 로직
-    private void updateRedisCandle(TransactionRequestDTO trade) {
-
-        // 1분 단위로 버킷팅 (ex: 12:05:33 -> 12:05:00
-        long minute = trade.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
-        String candleKey = "candle:1m:" + trade.getTokenId() + ":" + minute;
-
-        redissonClient.getScript(org.redisson.client.codec.StringCodec.INSTANCE).eval(
-                RScript.Mode.READ_WRITE,
-                luaScript, // 상단에서 작성했던 거
-                RScript.ReturnType.VALUE,
-                List.of(candleKey),
-                trade.getTargetPrice().toPlainString(),
-                trade.getExecutedVolume().toPlainString());
-
-        // 업데이트된 최신 캔들 정보를 읽어서 전파
-        // 추후에 트레이딩뷰 차트를 실시간으로 움직이게 함
-        Map<String, String> candleMap = redissonClient
-                .<String, String>getMap(candleKey, org.redisson.client.codec.StringCodec.INSTANCE)
-                .readAllMap();
-
-        if (candleMap != null && !candleMap.isEmpty()) {
-            String topicKey = "candle:topic:" + trade.getTokenId();
-
-            // 시간은 프론트엔드에서 한국 시간으로 변경 예정
-            CandleDTO liveCandle = CandleDTO.builder()
-                    .tokenId(trade.getTokenId())
-                    .unit(1)
-                    .candleTime(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(minute), ZoneOffset.UTC))
-                    .openingPrice(new BigDecimal(candleMap.get("open")))
-                    .highPrice(new BigDecimal(candleMap.get("high")))
-                    .lowPrice(new BigDecimal(candleMap.get("low")))
-                    .closingPrice(new BigDecimal(candleMap.get("close")))
-                    .tradeVolume(new BigDecimal(candleMap.get("vol")))
-                    .build();
-
-            // DTO 자체를 Redis Topic으로 발행 (MarketWorker가 받음)
-            redissonClient.getTopic(topicKey, new JsonJacksonCodec(objectMapper)).publish(liveCandle);
-        }
-    }
-
-    // 매 분 5초에 실행
-    // 모으는 건 1분, 저장은 5초 뒤
-    @Scheduled(cron = "5 * * * * *")
-    public void syncCandleToDB() {
-        // 1. 방금 마감된 1분 계산
-        long lastMinute = OffsetDateTime.now().minusMinutes(1).truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
-        String pattern = "candle:1m:*:" + lastMinute;
-
-        try {
-            // 2. 해당 시간내의 모든 토큰 키 찾기
-            Iterable<String> keys = redissonClient.getKeys().getKeysByPattern(pattern);
-
-            // 3. Redisson Batch 기능을 써서 한꺼번에 읽기 준비
-            RBatch batch = redissonClient.createBatch();
-            List<String> keyList = new ArrayList<>();
-
-            for (String key : keys) {
-                keyList.add(key);
-                // "나중에 이 키들 데이터 한꺼번에 읽어올 거야"라고 예약만 함
-                batch.getMap(key, org.redisson.client.codec.StringCodec.INSTANCE).readAllMapAsync();
-            }
-
-            if (keyList.isEmpty()) {
-                return;
-            }
-
-            // 4. 한 번의 네트워크 통신으로 모든 데이터 수집
-            BatchResult<?> result = batch.execute();
-            List<Map<String, String>> allRawData = (List<Map<String, String>>) result.getResponses();
-
-            // 5. 데이터 가공 (String -> BigDecimal & DTO화)
-            List<CandleDTO> candleList = new ArrayList<>();
-            for (int i = 0; i < keyList.size(); i++) {
-
-                Map<String, String> raw = allRawData.get(i);
-                if (raw == null || raw.isEmpty()) continue;
-
-                // 토큰 아이디 추출
-                String[] parts = keyList.get(i).split(":");
-                Long tokenId = Long.valueOf(parts[2]);
-
-                CandleDTO candle = CandleDTO.builder()
-                    .tokenId(tokenId)
-                    .unit(1)
-                    .candleTime(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(lastMinute), ZoneOffset.UTC))
-                    .openingPrice(new BigDecimal(raw.get("open")))
-                    .highPrice(new BigDecimal(raw.get("high")))
-                    .lowPrice(new BigDecimal(raw.get("low")))
-                    .closingPrice(new BigDecimal(raw.get("close")))
-                    .tradeVolume(new BigDecimal(raw.get("vol")))
-                    .build();
-
-                candleList.add(candle);
-            }
-
-            // 5. DB에 한꺼번에 저장
-            if (!candleList.isEmpty()) {
-                orderRepository.insertCandlesBatch(candleList);
-                log.info("[TradeWorker - Sync] {} 시점의 1분 봉 {}건을 DB로 저장 완료", lastMinute, candleList.size());
-            }
-
-        } catch (Exception e) {
-            log.error("[TradeWorker - Sync] 1분 봉 DB 동기화 중 오류 발생: ", e);
         }
     }
 
     // [DB] 체결 내역 생성
     // TransactionRequestDTO 누가 누구랑 얼마에 체결됐는가?
     // SettlementResultDTO 정산 후 잔액이 얼마가 되었는가?
-    private void enqueueLogs(TransactionRequestDTO t, SettlementResultDTO r) {
+    private void enqueueTransactionLogs(TransactionRequestDTO t, SettlementResultDTO r) {
         BigDecimal execAmount = t.getTargetPrice().multiply(t.getExecutedVolume());
 
         // 매수자 로그 (CASH OUT, TOKEN IN)
-        tradeBuffer.add(buildLog(t.getTxId1(), t.getTradeId(), t.getBuyOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId1(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "CASH", "OUT",
                 execAmount, r.getBuyCashAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
 
-        tradeBuffer.add(buildLog(t.getTxId2(), t.getTradeId(), t.getBuyOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId2(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "TOKEN", "IN",
                 t.getExecutedVolume(), r.getBuyTokenAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), t.getFeeRate().multiply(t.getExecutedVolume()), t.getCreatedAt()));
 
         // 매도자 로그 (CASH IN, TOKEN OUT)
-        tradeBuffer.add(buildLog(t.getTxId3(), t.getTradeId(), t.getSellOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId3(), t.getTradeId(), t.getSellOrderId(),
                 t.getSellWalletId(), "CASH", "IN",
                 execAmount, r.getSellCashAfter(), r.getSellRemToken(),
                 r.getSellRemCash(),t.getFeeRate().multiply(execAmount), t.getCreatedAt()));
 
-        tradeBuffer.add(buildLog(t.getTxId4(), t.getTradeId(), t.getSellOrderId(),
-                t.getSellWalletId(), "TOKEN", "OUT", t.getExecutedVolume(),
-                r.getSellTokenAfter(), r.getSellRemToken(), r.getSellRemCash(),
-                BigDecimal.ZERO, t.getCreatedAt()));
+        transactionBuffer.add(buildTrnasactionLog(t.getTxId4(), t.getTradeId(), t.getSellOrderId(),
+                t.getSellWalletId(), "TOKEN", "OUT",
+                t.getExecutedVolume(), r.getSellTokenAfter(), r.getSellRemToken(),
+                r.getSellRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
     }
 
     // 체결 내역 생성을 위한 builder
-    private TransactionHistDTO buildLog(Long txId, Long tradeId, Long orderId, Long walletId, String asset,
+    private TransactionHistDTO buildTrnasactionLog(Long txId, Long tradeId, Long orderId, Long walletId, String asset,
             String dir, BigDecimal amt, BigDecimal bal, BigDecimal remVol, BigDecimal remPrice, BigDecimal fee,
             OffsetDateTime time) {
         return TransactionHistDTO.builder()
@@ -321,18 +192,20 @@ public class TradeWorker implements CommandLineRunner {
     @Scheduled(fixedDelay = 1000)
     public void periodFlush() {
 
-        if (tradeBuffer.isEmpty()) {
+        if (transactionBuffer.isEmpty()) {
             return;
         }
 
-        List<TransactionHistDTO> tradeToSave = new ArrayList<>();
-        while (!tradeBuffer.isEmpty() && tradeToSave.size() < 1000) {
-            tradeToSave.add(tradeBuffer.poll());
+        List<TransactionHistDTO> transactionToSave = new ArrayList<>();
+        while (!transactionBuffer.isEmpty() && transactionToSave.size() < 1000) {
+            // 버퍼에서 처리할 체결 내역 로그를 하나씩 꺼내옴 (최대 1000개)
+            transactionToSave.add(transactionBuffer.poll());
         }
 
-        if (!tradeToSave.isEmpty()) {
-            orderRepository.bulkInsertTradeHistory(tradeToSave);
-            log.info("[DB] {}건의 체결 내역 저장 완료", tradeToSave.size());
+        if (!transactionToSave.isEmpty()) {
+            // 처리할 체결 내역들을 한 번에 처리
+            orderRepository.bulkInsertTransactionHists(transactionToSave);
+            log.info("[DB] {}건의 체결 내역 저장 완료", transactionToSave.size());
         }
     }
 
@@ -344,5 +217,41 @@ public class TradeWorker implements CommandLineRunner {
         } catch (Exception e) {
             log.error("[TradeWorker] 환불/취소 처리 실패: {}", e.getMessage());
         }
+    }
+
+    private void initializeMarketInfo() {
+        log.info("[TradeWorker] Redis에 토큰 리스트 초기화");
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+        List<TokenListDTO> tokens = marketRepository.selectAll();
+
+        if (!marketInfoMap.isEmpty()) {
+            log.info("[TradeWorker] Redis에 이미 마켓 데이터가 존재하므로 초기화를 건너뜁니다.");
+            return;
+        }
+
+        if(tokens == null || tokens.isEmpty()) {
+            log.warn("[TradeWorker] 토큰 데이터가 존재하지 않습니다.");
+            return;
+        }
+        Map<Long, TokenListDTO> bulkMap = tokens.stream()
+                .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> {
+                    dto.setChangeRate(calculateRate(dto.getMarketPrice(), dto.getOpenPrice()));
+                    return dto;
+                }));
+
+        marketInfoMap.putAll(bulkMap);
+
+        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
+        bulkMap.forEach((id, dto) -> {
+            rankingSet.add(dto.getDailyTradeVolume().doubleValue(), id);
+        });
+    }
+
+    private BigDecimal calculateRate(BigDecimal current, BigDecimal open) {
+        if(open == null || open.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
+        return current.subtract(open)
+                .divide(open, 4, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .stripTrailingZeros(); // 1.2500 -> 1.25 로 깔끔하게 정리
     }
 }

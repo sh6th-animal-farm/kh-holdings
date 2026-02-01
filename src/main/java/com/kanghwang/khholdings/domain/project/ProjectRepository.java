@@ -7,6 +7,7 @@ import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
 
 import com.kanghwang.khholdings.domain.project.dto.BurnDTO;
+import com.kanghwang.khholdings.domain.project.dto.CancelDTO;
 import com.kanghwang.khholdings.domain.project.dto.DividendDTO;
 import com.kanghwang.khholdings.domain.project.dto.OpenDTO;
 import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
@@ -19,7 +20,7 @@ public interface ProjectRepository {
 	Long applySubscription(Long transactionId, Long tokenId, Long subscriptionId, Long walletId, BigDecimal amount, String hashValue);
 
 	// 청약 취소
-	boolean cancelSubscription(Long transactionId, Long newTransactionId, String hashValue);
+	CancelDTO cancelSubscription(Long transactionId, Long newTransactionId, String hashValue);
 
 	// 청약 정산 (당첨, 낙첨)
 	boolean resultSubscription(List<SubscriptionDTO> subscriptionDTOList);
@@ -39,9 +40,12 @@ public interface ProjectRepository {
 	// 토큰 삭제
 	void deleteToken(Long tokenId);
 
-	// 토큰 발생
+	// 토큰 발행
 	int openToken(OpenDTO openDTO);
 
 	// 토큰 존재 여부 확인
 	Map<String, Object> checkTokenStatus(Long tokenId);
+
+	// 토큰 발행가 조회
+	BigDecimal getIssuePrice(Long tokenId);
 }

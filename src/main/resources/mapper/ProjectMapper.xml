@@ -25,10 +25,10 @@
             uw.cash_balance, 0, 0,
             NOW(), 0, #{hashValue}
         FROM updated_wallet uw
-            RETURNING transaction_id
+        RETURNING transaction_id
     </select>
 
-    <insert id="cancelSubscription">
+    <select id="cancelSubscription" resultType="CancelDTO">
         WITH target_tx AS (
             -- 1. 기존 청약 신청 내역 조회
             SELECT wallet_id, amount, trade_id
@@ -57,7 +57,8 @@
             uw.amount, uw.cash_balance, 0,
             0, NOW(), 0, #{hashValue}
         FROM update_wallet uw
-    </insert>
+        RETURNING transaction_id, wallet_id, amount
+    </select>
 
     <insert id="resultSubscription">
         <foreach collection="list" item="item" separator=";">
@@ -134,7 +135,7 @@
             u.user_id,
             w.wallet_id,
             h.token_id,
-            h.token_balance as total_balance
+            h.token_balance
         FROM holdings h
             JOIN wallets w ON h.wallet_id = w.wallet_id
             JOIN users u ON w.user_id = u.user_id
@@ -153,7 +154,7 @@
             (
             #{item.tokenId},
             #{item.walletId},
-            #{item.totalBalance}
+            #{item.tokenBalance}
             )
         </foreach>
     </insert>
@@ -207,7 +208,7 @@
 
     <update id="burnTokenBatch" parameterType="java.util.List">
         -- 토큰 소각
-        WITH updates(wallet_id, token_id, amount, cash_amount, tx_id1, tx_id2, h_val1, h_val2) AS (
+        WITH updates(wallet_id, token_id, amount, cash_amount, trade_id, tx_id1, tx_id2, h_val1, h_val2) AS (
             VALUES
             <foreach collection="list" item="item" separator=",">
                 (
@@ -215,6 +216,7 @@
                 #{item.tokenId}::bigint,
                 #{item.amount}::numeric,
                 #{item.cashAmount}::numeric,
+                #{item.tradeId}::bigint,
                 #{item.txId1}::bigint,
                 #{item.txId2}::bigint,
                 #{item.hashValue1}::text,
@@ -248,6 +250,7 @@
         )
         INSERT INTO transaction_hists (
             transaction_id,
+            trade_id,
             wallet_id,
             transaction_type,
             direction,
@@ -258,6 +261,7 @@
         )
         SELECT
             v.tx_id,
+            u.trade_id,
             u.wallet_id,
             'BURN'::transaction_type_enum,
             v.t_dir,
@@ -305,6 +309,14 @@
         SELECT
             token_id,
             deleted_at
+        FROM tokens
+        WHERE token_id = #{tokenId}
+    </select>
+
+    <select id="getIssuePrice">
+        -- 토큰 발행가 조회
+        SELECT
+            issue_price
         FROM tokens
         WHERE token_id = #{tokenId}
     </select>

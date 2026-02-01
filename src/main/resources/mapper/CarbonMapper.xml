@@ -5,6 +5,13 @@
 
 <mapper namespace="com.kanghwang.khholdings.domain.carbon.CarbonRepository">
 
+    <select id="getUserClass" resultType="UserClass">
+        SELECT u.user_class
+        FROM users u
+            JOIN wallets w ON u.user_id = w.user_id
+        WHERE w.wallet_id = #{walletId}
+    </select>
+
     <select id="selectTokenIdByWalletId" resultType="HoldingRequestDTO">
         SELECT
             h.token_id,

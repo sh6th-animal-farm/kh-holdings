@@ -13,14 +13,8 @@ import lombok.Setter;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class SubscriptionDTO {
-	private Long passTxId;
-	private Long failTxId;
-	private Long subscriptionId;
-	private Long tokenId;
+public class CancelDTO {
+	private Long transactionId;
 	private Long walletId;
-	private BigDecimal passPrice;  // 당첨 가격
-	private BigDecimal passVolume; // 당첨 수량
-	private String passHashValue;
-	private String failHashValue;
+	private BigDecimal amount;
 }

@@ -2,6 +2,8 @@ package com.kanghwang.khholdings.domain.market.dto;
 
 import java.math.BigDecimal;
 
+import com.kanghwang.khholdings.domain.order.type.OrderSide;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,10 +15,8 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MarketDTO {
-	private Long tokenId;
-	private String tokenName;
-	private String tickerSymbol;
-	private BigDecimal marketPrice;
-	private BigDecimal dailyTradeVolume;
+public class OrderPriceDTO {
+	BigDecimal price;       // 호가
+	BigDecimal totalVolume; // 총 주문수량
+	OrderSide side;         // BUY or SELL
 }
