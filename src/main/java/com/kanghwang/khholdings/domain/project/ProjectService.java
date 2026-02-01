@@ -190,19 +190,24 @@ public class ProjectService {
 		return divList;
 	}
 
-	// 토큰 소각
-	@Transactional
-	public List<CancelDTO>  burnToken(Long tokenId) {
-
-		// 토큰 존재 여부 확인
+	// 토큰 존재 여부 확인
+	public boolean checkTokenStatus(Long tokenId) {
 		Map<String, Object> tokenStatus = projectRepository.checkTokenStatus(tokenId);
 
-		if (tokenStatus == null) {
-			throw new IllegalArgumentException("존재하지 않는 토큰입니다.");
+		if (tokenStatus == null || tokenStatus.get("deleted_at") != null) {
+			// 존재하지 않거나 이미 소각된 경우
+			return false;
 		}
+		return true;
+	}
 
-		if (tokenStatus.get("deleted_at") != null) {
-			throw new IllegalArgumentException("이미 소각 처리된 토큰입니다.");
+	// 토큰 소각
+	@Transactional
+	public List<CancelDTO> burnToken(Long tokenId) {
+
+		// 토큰 존재 여부 확인
+		if (!checkTokenStatus(tokenId)) {
+			throw new IllegalArgumentException("이미 소각되었거나 존재하지 않는 토큰입니다.");
 		}
 
 		// 1. 단가 조회
