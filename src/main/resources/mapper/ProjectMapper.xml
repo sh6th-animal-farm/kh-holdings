@@ -290,12 +290,14 @@
 
     <insert id="openToken" parameterType="OpenDTO">
         INSERT INTO tokens (
+            token_id,
             token_name,
             ticker_symbol,
             total_supply,
             issue_price,
             created_at
         ) VALUES (
+             #{tokenId},
              #{tokenName},
              #{tickerSymbol},
              #{totalSupply},
