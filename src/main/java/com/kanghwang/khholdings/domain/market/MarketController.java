@@ -112,6 +112,9 @@ public class MarketController {
 	public ResponseEntity<ApiResponse<TokenListDTO>> selectTokenOhlcv(@PathVariable Long tokenId) {
 		// MarketService에서 Redis + DB 로직을 행
 		TokenListDTO detail = marketService.selectTokenOhlcv(tokenId);
+		if (detail == null) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.", null);
+		}
 
 		return ApiResponseUtil.ok("토큰 상세 정보 조회에 성공했습니다.", detail);
 	}
