@@ -3,11 +3,13 @@ package com.kanghwang.khholdings.domain.market;
 import java.math.BigDecimal;
 import java.util.List;
 
-import com.kanghwang.khholdings.domain.order.dto.CandleDTO;
 import org.apache.ibatis.annotations.Mapper;
 
-import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
+import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 
 @Mapper
 public interface MarketRepository {
@@ -18,12 +20,24 @@ public interface MarketRepository {
 	// 종목 검색어 조회
 	List<TokenListDTO> selectBySearch(String content);
 
-	// 미체결 내역 조회
-	List<PendingDTO> selectPending(Long tokenId, Long walletId);
-
 	// 특정 토큰 현재가 조회
 	BigDecimal selectLatestTokenPrice(Long tokenId);
 
+	// 매수 호가 조회
+	List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId, BigDecimal price);
+
+	// 매도 호가 조회
+	List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId, BigDecimal price);
+
+	// 체결 조회
+	List<TradeDTO> selectAllTradePrice(Long tokenId);
+
 	// 차트 조회
-	List<CandleDTO> selectCandles(Long tokenId, int unit, int limit);
+	List<CandleDTO> selectCandles(Long tokenId, int unit, long start, long end);
+
+	// 미체결 내역 조회
+	List<PendingDTO> selectPending(Long tokenId, Long walletId);
+
+	// 토큰 OHLCV 조회
+	TokenListDTO selectTokenOhlcv(Long tokenId);
 }

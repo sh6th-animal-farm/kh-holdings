@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.carbon.dto.HoldingRequestDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
+import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
 @RestController
 @RequestMapping("/api/carbon")
@@ -23,10 +24,9 @@ public class CarbonController {
 	public ResponseEntity<ApiResponse<List<HoldingRequestDTO>>> selectTokenIdByWalletId(@PathVariable Long walletId) {
 
 		List<HoldingRequestDTO> list = carbonService.selectTokenIdByWalletId(walletId);
-
-		if (list == null || list.isEmpty()) {
-			return ResponseEntity.badRequest().body(ApiResponse.error("토큰 보유 수량 조회에 실패했습니다."));
+		if (list.isEmpty()) {
+			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
-		return ResponseEntity.ok(ApiResponse.success("토큰 보유 수량 조회에 성공했습니다.", list));
+		return ApiResponseUtil.ok("토큰 보유 수량 조회에 성공했습니다.", list);
 	}
 }

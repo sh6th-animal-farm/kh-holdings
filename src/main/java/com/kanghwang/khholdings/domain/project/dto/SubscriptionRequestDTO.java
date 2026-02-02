@@ -1,5 +1,7 @@
 package com.kanghwang.khholdings.domain.project.dto;
 
+import java.math.BigDecimal;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,6 +16,6 @@ import lombok.Setter;
 public class SubscriptionRequestDTO {
 	private Long subscriptionId;
 	private Long walletId;
-	private Long passPrice;  // 당첨 가격
-	private Long passVolume; // 당첨 수량
+	private BigDecimal passPrice;  // 당첨 가격
+	private BigDecimal passVolume; // 당첨 수량
 }
