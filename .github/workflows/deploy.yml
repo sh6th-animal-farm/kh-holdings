@@ -2,57 +2,58 @@ name: Java CI/CD with Gradle
 
 on:
   push:
-    branches: [ "develop", "feat/cicd" ] # main 브랜치와 feat/cicd에 push될 때 실행
+    branches: ["develop", "feat/cicd"] # main 브랜치와 feat/cicd에 push될 때 실행
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
 
-    # 1. Gradle 빌드 (테스트 포함)
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+      # 1. Gradle 빌드 (테스트 포함)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-    - name: Build with Gradle
-      run: ./gradlew clean build -x test # 테스트 제외 시 -x test 추가
+      - name: Build with Gradle
+        run: ./gradlew clean build -x test # 테스트 제외 시 -x test 추가
 
-    # 2. Docker 이미지 빌드 및 Push (Docker Hub 기준)
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # 2. Docker 이미지 빌드 및 Push (Docker Hub 기준)
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build and push Docker image
-      run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest
+      - name: Build and push Docker image
+        run: |
+          docker build --no-cache -t ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest
 
-    # 3. 서버 배포 (SSH 접속 후 Docker 실행)
-    - name: Deploy to Server
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_KEY }}
-        script: |
-          # 최신 이미지 pull
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest
-          # 기존 컨테이너 중지 및 삭제
-          docker stop kh-holdings || true
-          docker rm kh-holdings || true
-          # 새 컨테이너 실행 (백그라운드 -d)
-          docker run -d --name kh-holdings \
-          -p 9090:9090 \
-          -v "/home/${{ secrets.SERVER_USER }}/kh-config/application.properties:/app/application.properties" \
-          ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest \
-          --spring.config.location=file:/app/application.properties
-
+      # 3. 서버 배포 (SSH 접속 후 Docker 실행)
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          script: |
+            # 1. 안 쓰는 이미지 미리 삭제 (용량 확보)
+            docker image prune -f
+            # 최신 이미지 pull
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest
+            # 기존 컨테이너 중지 및 삭제
+            docker stop kh-holdings || true
+            docker rm kh-holdings || true
+            # 새 컨테이너 실행 (백그라운드 -d)
+            docker run -d --name kh-holdings \
+            -p 9090:9090 \
+            -v "/home/${{ secrets.SERVER_USER }}/kh-config/application.properties:/app/application.properties" \
+            ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest \
+            --spring.config.location=file:/app/application.properties
