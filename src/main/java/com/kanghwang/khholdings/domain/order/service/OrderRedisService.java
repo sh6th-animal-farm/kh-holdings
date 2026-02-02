@@ -366,6 +366,7 @@ public class OrderRedisService {
 
 		// 2. Redis 작업 (호가창 및 주문 상세에서 제거)
 		removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
+		updateAggrOrderBook(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderInfo.getOrderPrice(), orderInfo.getRemainingToken().negate());
 
 		// 3. 비동기 정산용 Stream 저장
 		RefundRequestDTO refundRequestDTO = new RefundRequestDTO(
