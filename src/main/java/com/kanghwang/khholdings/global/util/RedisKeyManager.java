@@ -64,6 +64,6 @@ public class RedisKeyManager {
 
     // 10.
     public String getCandleKey(Long tokenId, int unit, Long minute) {
-        return "candle:" + unit + ":" + tokenId + ":" + minute;
+        return "candle:" + unit + "m:" + tokenId + ":" + minute;
     }
 }
