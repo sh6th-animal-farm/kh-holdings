@@ -223,7 +223,6 @@ public class TradeWorker implements CommandLineRunner {
         RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getMarketRankKey());
 
         List<TokenListDTO> tokens = marketRepository.selectAll();
-        System.out.println("tokens:::::::: "+tokens);
 
         if(tokens == null || tokens.isEmpty()) {
             log.warn("[TradeWorker] 토큰 데이터가 존재하지 않습니다.");
@@ -248,7 +247,6 @@ public class TradeWorker implements CommandLineRunner {
         Map<Long, TokenListDTO> bulkMap = tokens.stream()
                 .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
 
-        System.out.println("bulkMap:::::::: "+bulkMap);
         marketInfoMap.putAll(bulkMap);
 
         rankingSet.clear();
