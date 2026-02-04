@@ -19,4 +19,5 @@ public class CandleDTO implements Serializable {
     private BigDecimal lowPrice;        // 저가
     private BigDecimal closingPrice;    // 종가
     private BigDecimal tradeVolume;     // 거래량
+    private BigDecimal tradeAmount;     // 거래대금
 }
