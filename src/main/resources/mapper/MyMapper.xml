@@ -85,8 +85,8 @@
                 ELSE th.transaction_type::text
             END AS transactionType,
 
-            COALESCE(MAX(t.token_name), '-') AS tokenName,
-            COALESCE(MAX(t.ticker_symbol), '-') AS tickerSymbol,
+            COALESCE(MAX(t1.token_name), MAX(t2.token_name), '-') AS tokenName,
+            COALESCE(MAX(t1.ticker_symbol), MAX(t2.ticker_symbol), '-') AS tickerSymbol,
 
             -- executedAmount: CASH IN 이면 +, CASH OUT 이면 - 로 집계
             SUM(
@@ -125,8 +125,10 @@
             MAX(CASE WHEN th.asset_type = 'CASH' THEN th.balance_after ELSE 0 END) AS balanceAfter
 
         FROM transaction_hists th
-             LEFT JOIN orders o ON th.order_id = o.order_id
-             LEFT JOIN tokens t ON o.token_id = t.token_id
+            LEFT JOIN orders o ON th.order_id = o.order_id
+            LEFT JOIN tokens t1 ON o.token_id = t.token_id
+            LEFT JOIN dividend_hists dh ON th.transaction_id = dh.transaction_id
+            LEFT JOIN tokens t2 ON dh.token_id = t.token_id
 
         <where>
             th.wallet_id = #{walletId}

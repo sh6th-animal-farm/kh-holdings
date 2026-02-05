@@ -1,8 +1,9 @@
 package com.kanghwang.khholdings.global.util;
 
-import java.util.List;
 import java.util.Collections;
+import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import com.kanghwang.khholdings.global.dto.ApiResponse;
@@ -20,7 +21,9 @@ public class ApiResponseUtil {
 	}
 
 	// 실패
-	public static <T> ApiResponse<T> error(String message) {
-		return new ApiResponse<>(message, null);
+	public static <T> ResponseEntity<ApiResponse<T>> error(HttpStatus status, String message) {
+		return ResponseEntity
+			.status(status)
+			.body(new ApiResponse<>(message, null));
 	}
 }
