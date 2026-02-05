@@ -4,10 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -219,32 +216,50 @@ public class TradeWorker implements CommandLineRunner {
         }
     }
 
+    // 서버 재가동 시 거래소 토큰 리스트 초기화
     private void initializeMarketInfo() {
         log.info("[TradeWorker] Redis에 토큰 리스트 초기화");
-        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
-        List<TokenListDTO> tokens = marketRepository.selectAll();
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getMarketInfoKey());
+        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getMarketRankKey());
 
-        if (!marketInfoMap.isEmpty()) {
-            log.info("[TradeWorker] Redis에 이미 마켓 데이터가 존재하므로 초기화를 건너뜁니다.");
-            return;
-        }
+        List<TokenListDTO> tokens = marketRepository.selectAll();
 
         if(tokens == null || tokens.isEmpty()) {
             log.warn("[TradeWorker] 토큰 데이터가 존재하지 않습니다.");
             return;
         }
+
+        tokens.forEach(dto -> {
+            // 1. 거래대금 소수점 버림
+            if (dto.getDailyTradeVolume() != null) {
+                dto.setDailyTradeVolume(dto.getDailyTradeVolume().setScale(0, RoundingMode.DOWN));
+            } else {
+                dto.setDailyTradeVolume(BigDecimal.ZERO.setScale(0, RoundingMode.DOWN));
+            }
+
+            // 2. 등락률 소수점 반올림
+            if (dto.getChangeRate() == null) {
+                dto.setChangeRate(calculateRate(dto.getMarketPrice(), dto.getOpenPrice()));
+            }
+            dto.setChangeRate(dto.getChangeRate().setScale(2, RoundingMode.HALF_UP));
+        });
+
         Map<Long, TokenListDTO> bulkMap = tokens.stream()
-                .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> {
-                    dto.setChangeRate(calculateRate(dto.getMarketPrice(), dto.getOpenPrice()));
-                    return dto;
-                }));
+                .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
 
         marketInfoMap.putAll(bulkMap);
 
-        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
+        rankingSet.clear();
         bulkMap.forEach((id, dto) -> {
             rankingSet.add(dto.getDailyTradeVolume().doubleValue(), id);
         });
+
+        // Redis에만 있고 DB에는 없는 토큰
+//        if (marketInfoMap.size() > tokens.size()) {
+//            Set<Long> dbIds = tokens.stream().map(TokenListDTO::getTokenId).collect(Collectors.toSet());
+//            marketInfoMap.keySet().removeAll(marketInfoMap.keySet().stream()
+//                    .filter(id -> !dbIds.contains(id)).collect(Collectors.toSet()));
+//        }
     }
 
     private BigDecimal calculateRate(BigDecimal current, BigDecimal open) {

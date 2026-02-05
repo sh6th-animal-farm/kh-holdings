@@ -38,20 +38,24 @@ public class MarketService {
     // 종목 전체 조회
     public List<TokenListDTO> selectAll() {
 
-        long start = System.currentTimeMillis();
-        log.info("종목 전체 조회 -API 시작");
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getMarketInfoKey());
+        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getMarketRankKey());
 
-        // 1. Redis Map에서 실시간 데이터 조회(현재 redis에 한 건도 없을 때만 db 가게 돼있음...)
-        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
-        List<TokenListDTO> list = new ArrayList<>(marketInfoMap.readAllValues());
+        // 1. 랭킹셋에서 거래량 높은 순(desc)으로 토큰 ID들만 먼저 가져옴
+        List<Long> sortedIds = new ArrayList<>(rankingSet.valueRangeReversed(0, -1));
+        List<TokenListDTO> list;
 
-        if (list.isEmpty()) {
+        if (!sortedIds.isEmpty()) {
+            // 2. Redis에 데이터가 있는 경우: ID 순서대로 Map에서 꺼내기 (이미 정렬된 상태 유지)
+            Map<Long, TokenListDTO> dataMap = marketInfoMap.getAll(new HashSet<>(sortedIds));
+            list = sortedIds.stream()
+                    .map(dataMap::get)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+        } else {
+            // 3. Redis가 비어있는 경우: DB 조회
             list = marketRepository.selectAll();
-
             if (list != null && !list.isEmpty()) {
-
-                RScoredSortedSet<Long> rankingSet = redissonClient
-                        .getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking");
                 list.forEach(dto -> {
                     if (dto.getDailyTradeVolume() != null) {
                         dto.setDailyTradeVolume(dto.getDailyTradeVolume().setScale(0, RoundingMode.DOWN));
@@ -62,19 +66,17 @@ public class MarketService {
                     rankingSet.add(dto.getDailyTradeVolume().doubleValue(), dto.getTokenId());
                 });
 
-                Map<Long, TokenListDTO> map = list.stream()
+                Map<Long, TokenListDTO> bulkMap = list.stream()
                         .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
-                marketInfoMap.putAll(map);
+                marketInfoMap.putAll(bulkMap);
+
+                list.sort((a, b) -> {
+                    BigDecimal volA = a.getDailyTradeVolume() != null ? a.getDailyTradeVolume() : BigDecimal.ZERO;
+                    BigDecimal volB = b.getDailyTradeVolume() != null ? b.getDailyTradeVolume() : BigDecimal.ZERO;
+                    return volB.compareTo(volA);
+                });
             }
         }
-
-        list.sort((a, b) -> {
-            BigDecimal volA = a.getDailyTradeVolume() != null ? a.getDailyTradeVolume() : BigDecimal.ZERO;
-            BigDecimal volB = b.getDailyTradeVolume() != null ? b.getDailyTradeVolume() : BigDecimal.ZERO;
-            return volB.compareTo(volA);
-        });
-
-        log.info("종목 전체 조회 - 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start));
 
         return list == null ? new ArrayList<>() : list;
     }
@@ -261,7 +263,7 @@ public class MarketService {
     // 특정 토큰 OHLCV 조회
     public TokenListDTO selectTokenOhlcv(Long tokenId) {
 
-        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+        RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getMarketInfoKey());
         TokenListDTO token = marketInfoMap.get(tokenId);
 
         if (token == null) {

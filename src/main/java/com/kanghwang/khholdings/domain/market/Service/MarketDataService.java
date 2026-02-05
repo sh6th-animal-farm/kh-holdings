@@ -159,9 +159,9 @@ public class MarketDataService {
 	// 현재가, 등락률, 거래대금 갱신
 	@Scheduled(cron = "0 0 9 * * *")
 	public void resetDailyData() {
-		redissonClient.getScoredSortedSet(redisKeyManager.getPrefix() + "market:ranking").clear();
+		redissonClient.getScoredSortedSet(redisKeyManager.getMarketRankKey()).clear();
 
-		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
+		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getMarketInfoKey());
 		RBatch batch = redissonClient.createBatch();
 
 		for (Long tokenId : marketInfoMap.keySet()) {
@@ -178,8 +178,8 @@ public class MarketDataService {
 			dto.setChangeRate(BigDecimal.ZERO);
 
 			// 배치에 모아뒀다가
-			batch.getMap("market:info").putAsync(tokenId, dto);
-			batch.getTopic(redisKeyManager.getPrefix() + "market:update:topic").publishAsync(dto);
+			batch.getMap(redisKeyManager.getMarketInfoKey()).putAsync(tokenId, dto);
+			batch.getTopic(redisKeyManager.getMarketUpdateTopicKey()).publishAsync(dto);
 			System.out.println("[MarketDataService] 9시 초기화 dto: " + dto.toString());
 		}
 		// 한 번에 redis로 전송

@@ -49,7 +49,7 @@ public class RedisKeyManager {
 
     // 7. 종목 요약 (MAP): 토큰 실시간 리스트에 표시할 정보를 저장
     public String getMarketInfoKey() {
-        return "market:info";
+        return getPrefix() + "market:info";
     }
 
     // 8. 종목 순위 (ZSET): 토큰 실시간 리스트를 거래대금순으로 정렬하기 위해 사용
@@ -64,6 +64,6 @@ public class RedisKeyManager {
 
     // 10.
     public String getCandleKey(Long tokenId, int unit, Long minute) {
-        return "candle:" + unit + "m:" + tokenId + ":" + minute;
+        return getPrefix() + "candle:" + unit + "m:" + tokenId + ":" + minute;
     }
 }
