@@ -79,6 +79,7 @@
         
     <select id="selectMyTransactionHist" resultType="MyTransactionHistDTO">
         SELECT
+            MAX(th.transaction_id) AS transactionId,
             MIN(th.created_at) AS createdAt,
             CASE
                 WHEN th.transaction_type = 'TRADE' AND MAX(o.order_side) = 'BUY' THEN 'BUY'
@@ -127,9 +128,9 @@
 
         FROM transaction_hists th
             LEFT JOIN orders o ON th.order_id = o.order_id
-            LEFT JOIN tokens t1 ON o.token_id = t.token_id
+            LEFT JOIN tokens t1 ON o.token_id = t1.token_id
             LEFT JOIN dividend_hists dh ON th.transaction_id = dh.transaction_id
-            LEFT JOIN tokens t2 ON dh.token_id = t.token_id
+            LEFT JOIN tokens t2 ON dh.token_id = t2.token_id
 
         <where>
             th.wallet_id = #{walletId}
