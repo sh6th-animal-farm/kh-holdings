@@ -55,6 +55,6 @@ jobs:
             docker run -d --name kh-holdings \
             -p 443:443 \
             -p 80:80 \    
-            -v "/home/${{ secrets.SERVER_USER }}/kh-config/application.properties:/app/application.properties" \
+            -v "/home/${{ secrets.SERVER_USER }}/kh-config:/config \
             ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest \
-            --spring.config.location=file:/app/application.properties
+            --spring.config.location=file:/config/application.properties
