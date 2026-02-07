@@ -54,7 +54,7 @@ jobs:
             # 새 컨테이너 실행 (백그라운드 -d)
             docker run -d --name kh-holdings \
             -p 443:443 \
-            -p 80:80 \    
-            -v "/home/${{ secrets.SERVER_USER }}/kh-config/application.properties:/app/application.properties" \
+            -p 80:80 \
+            -v "/home/${{ secrets.SERVER_USER }}/kh-config:/config" \
             ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest \
-            --spring.config.location=file:/app/application.properties
+            --spring.config.location=file:/config/application.properties
