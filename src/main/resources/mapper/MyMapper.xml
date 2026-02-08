@@ -71,7 +71,7 @@
                  LEFT JOIN latest_token_quotes ltq
                            ON h.token_id = ltq.token_id
         WHERE h.wallet_id = #{walletId}
-        AND t.deleted_at IS NOT null
+        AND t.deleted_at IS null
         ORDER BY t.token_name
             LIMIT 10
         OFFSET (#{page} - 1) * 10
