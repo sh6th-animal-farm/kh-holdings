@@ -8,6 +8,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RMap;
@@ -245,14 +246,48 @@ public class MarketService {
 
     // 매수 호가 조회
     public List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId) {
-        BigDecimal price = getCurrentPrice(tokenId);
-        return marketRepository.selectAllOrderBuyPrice(tokenId, price);
+        String key = redisKeyManager.getOrderBookAggrKey(tokenId, OrderSide.BUY);
+        RMap<String, BigDecimal> aggrMap = redissonClient.getMap(key);
+
+        List<OrderPriceDTO> result = aggrMap.readAllEntrySet().stream()
+            .map(entry -> OrderPriceDTO.builder()
+                .price(new BigDecimal(entry.getKey()))
+                .totalVolume(new BigDecimal(String.valueOf(entry.getValue())))
+                .side(OrderSide.BUY)
+                .build())
+            .sorted(Comparator.comparing(OrderPriceDTO::getPrice))
+            .limit(30)
+            .collect(Collectors.toList());
+
+        if(result == null || result.isEmpty()) {
+            BigDecimal price = getCurrentPrice(tokenId);
+            return marketRepository.selectAllOrderBuyPrice(tokenId, price);
+        }
+
+        return result;
     }
 
     // 매도 호가 조회
     public List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId) {
-        BigDecimal price = getCurrentPrice(tokenId);
-        return marketRepository.selectAllOrderSellPrice(tokenId, price);
+        String key = redisKeyManager.getOrderBookAggrKey(tokenId, OrderSide.SELL);
+        RMap<String, BigDecimal> aggrMap = redissonClient.getMap(key);
+
+        List<OrderPriceDTO> result = aggrMap.readAllEntrySet().stream()
+            .map(entry -> OrderPriceDTO.builder()
+                .price(new BigDecimal(entry.getKey()))
+                .totalVolume(new BigDecimal(String.valueOf(entry.getValue())))
+                .side(OrderSide.SELL)
+                .build())
+            .sorted(Comparator.comparing(OrderPriceDTO::getPrice).reversed())
+            .limit(30)
+            .collect(Collectors.toList());
+
+        if(result == null || result.isEmpty()) {
+            BigDecimal price = getCurrentPrice(tokenId);
+            return marketRepository.selectAllOrderSellPrice(tokenId, price);
+        }
+
+        return result;
     }
 
     // 체결 조회
