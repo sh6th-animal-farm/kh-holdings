@@ -19,11 +19,8 @@ public class GlobalExceptionHandler {
     // 1. DB 관련 에러 캐치
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<ApiResponse<Void>> handleDatabaseError(DataAccessException e) {
-        log.error("데이터베이스 오류 발생: {}", e.getMessage());
-        String message = e.getMessage();
-        if (message == null || message.isEmpty()) {
-            message = "데이터 처리 중 문제가 발생했습니다.";
-        }
+        String message = extractCleanMessage(e); // 에러 메시지만 추출
+        log.error("데이터베이스 오류 발생: {}", message);
 
         return ApiResponseUtil.error(HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
@@ -62,5 +59,24 @@ public class GlobalExceptionHandler {
         }
 
         return ApiResponseUtil.error(HttpStatus.INTERNAL_SERVER_ERROR, message);
+    }
+
+    // 에러 메시지 정제
+    private String extractCleanMessage(DataAccessException e) {
+        Throwable cause = e.getCause();
+
+        if (cause instanceof org.postgresql.util.PSQLException psqlEx) {
+            var serverMsg = psqlEx.getServerErrorMessage();
+            if (serverMsg != null && serverMsg.getMessage() != null) {
+                return serverMsg.getMessage();
+            }
+        }
+
+        String msg = e.getMessage();
+        if (msg == null || msg.isBlank()) {
+            return "데이터 처리 중 문제가 발생했습니다.";
+        }
+
+        return msg;
     }
 }
