@@ -99,11 +99,13 @@ public class OrderRedisService {
 			if (myOrderDTO.getOrderType() == OrderType.MARKET && mySide == OrderSide.BUY) {
 				// 1) 시장가 매수 : 미체결 금액이 0보다 작거나 같으면 break
 				if (myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) <= 0) {
+					log.info("[EXIT] 전액 체결로 매칭을 종료합니다.");
 					break;
 				}
 			} else {
 				if (myOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0) {
 					// 2) 그 외(지정가, 시장가 매도) : 미체결 수량이 0보다 작거나 같으면 break
+					log.info("[EXIT] 전액 체결로 매칭을 종료합니다.");
 					break;
 				}
 			}
@@ -114,6 +116,7 @@ public class OrderRedisService {
 			Long targetOrderId = counterOrderBook.first(); // 상대방의 주문
 			if (targetOrderId == null) {
 				// 호가창에 주문이 없으면 break
+				log.info("[EXIT] 물량이 존재하지 않아 매칭을 종료합니다.");
 				break;
 			}
 
@@ -121,6 +124,7 @@ public class OrderRedisService {
 			BigDecimal targetScore = BigDecimal.valueOf(counterOrderBook.getScore(targetOrderId)); // 상대방의 주문 가격
 			if (targetScore == null) {
 				// 호가창에 상대방의 가격 정보가 없으면 break
+				log.info("[EXIT] 물량이 존재하지 않아 매칭을 종료합니다.");
 				break;
 			}
 
@@ -135,12 +139,14 @@ public class OrderRedisService {
 				// 1) 매수(me) -> 내 가격 >= 상대방 가격 ("이 가격 이상으로는 안 사!")
 				if (mySide == OrderSide.BUY && myOrderDTO.getOrderPrice().compareTo(targetPrice) < 0) {
 					// 매수는 상대방 가격이 더 비싸면 break
+					log.info("[EXIT] 유리한 가격이 존재하지 않아 매칭을 종료합니다.");
 					break;
 				}
 
 				// 2) 매도(me) -> 내 가격 <= 상대방 가격 ("이 가격 이하로는 안 팔아!")
 				if (mySide == OrderSide.SELL && myOrderDTO.getOrderPrice().compareTo(targetPrice) > 0) {
 					// 매도는 상대방 가격이 더 싸면 break
+					log.info("[EXIT] 유리한 가격이 존재하지 않아 매칭을 종료합니다.");
 					break;
 				}
 			}
@@ -174,7 +180,7 @@ public class OrderRedisService {
 			// ex. (내 미체결 금액 / 상대방 주문 단가)의 결과가 0.000000001일 때, 9자리 수는 버림 해서 0개가 됨
 			// -> 추후 미체결 금액에 대해 환불 처리
 			if (executedVolume == null || executedVolume.compareTo(BigDecimal.ZERO) <= 0) {
-				log.info("체결 가능한 수량이 없어 매칭을 종료합니다.");
+				log.info("[EXIT] 체결 가능한 수량이 없어 매칭을 종료합니다.");
 				break;
 			}
 
@@ -324,18 +330,33 @@ public class OrderRedisService {
 	// 웹소켓 호가창 가격 및 수량 전송
 	private void updateAggrOrderBook(Long tokenId, OrderSide side, BigDecimal price, BigDecimal volume) {
 		String orderbookAggrKey = redisKeyManager.getOrderBookAggrKey(tokenId, side);
+
+		// ZSET: 가격 저장용 -> 자동 정렬
+		RScoredSortedSet<String> aggrSet = redissonClient.getScoredSortedSet(orderbookAggrKey + ":index");
+		// MAP: 수량 저장용
 		RMap<String, BigDecimal> aggrMap = redissonClient.getMap(orderbookAggrKey);
 
-		// 1. Redis Hash 값 업데이트 ("가격" : "수량")
-		// 가격에 해당하는 수량을 갖고 와서 volume을 더한 값을 반환
-		BigDecimal updatedVolume = aggrMap.addAndGet(price.stripTrailingZeros().toPlainString(), volume);
+		// 1. 수량 업데이트 ("가격" : "수량")
+		String priceKey = price.stripTrailingZeros().toPlainString(); // 가격
+		BigDecimal currentVolume = aggrMap.get(priceKey); // 수량
+
+		if (currentVolume == null) currentVolume = BigDecimal.ZERO;
+
+		BigDecimal updatedVolume = currentVolume.add(volume);
+		aggrMap.put(priceKey, updatedVolume);
 
 		// 2. 수량이 0 이하라면 필드 삭제, 아니면 업데이트 정보 전송
 		String action = "UPDATE";
 		if (updatedVolume.compareTo(BigDecimal.ZERO) <= 0) {
-			aggrMap.remove(price.toPlainString()); // Redis에서 제거
+			// Redis에서 제거
+			aggrSet.remove(priceKey);
+			aggrMap.remove(price.toPlainString());
 			updatedVolume = BigDecimal.ZERO;
 			action = "DELETE";
+		} else {
+			// 잔량이 존재하면, 정렬 셋에 해당 가격 추가 또는 업데이트
+			aggrSet.add(price.doubleValue(), priceKey);
+			action = "UPDATE";
 		}
 
 		// 3. 웹소켓 전송을 위한 토픽 발행

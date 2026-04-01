@@ -4,21 +4,27 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import com.kanghwang.khholdings.domain.market.MarketRepository;
-import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
-import org.redisson.api.*;
+import org.redisson.api.RMap;
+import org.redisson.api.RScoredSortedSet;
+import org.redisson.api.RStream;
+import org.redisson.api.RedissonClient;
+import org.redisson.api.StreamMessageId;
 import org.redisson.api.stream.StreamReadArgs;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.kanghwang.khholdings.domain.market.Service.MarketDataService;
+import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;
@@ -81,7 +87,7 @@ public class TradeWorker implements CommandLineRunner {
                         StreamReadArgs.greaterThan(lastId).count(10).timeout(Duration.ofSeconds(1)));
 
                 // 데이터가 없으면 건너뛰기
-                if (messages.isEmpty()) {
+                if (messages == null || messages.isEmpty()) {
                     continue;
                 }
 
@@ -150,39 +156,42 @@ public class TradeWorker implements CommandLineRunner {
         BigDecimal execAmount = t.getTargetPrice().multiply(t.getExecutedVolume());
 
         // 매수자 로그 (CASH OUT, TOKEN IN)
-        transactionBuffer.add(buildTrnasactionLog(t.getTxId1(), t.getTradeId(), t.getBuyOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(
+                t.getTxId1(), t.getTokenId(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "CASH", "OUT",
                 execAmount, r.getBuyCashAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
 
-        transactionBuffer.add(buildTrnasactionLog(t.getTxId2(), t.getTradeId(), t.getBuyOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(
+                t.getTxId2(), t.getTokenId(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "TOKEN", "IN",
                 t.getExecutedVolume(), r.getBuyTokenAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), t.getFeeRate().multiply(t.getExecutedVolume()), t.getCreatedAt()));
 
         // 매도자 로그 (CASH IN, TOKEN OUT)
-        transactionBuffer.add(buildTrnasactionLog(t.getTxId3(), t.getTradeId(), t.getSellOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(
+                t.getTxId3(), t.getTokenId(), t.getTradeId(), t.getSellOrderId(),
                 t.getSellWalletId(), "CASH", "IN",
                 execAmount, r.getSellCashAfter(), r.getSellRemToken(),
                 r.getSellRemCash(),t.getFeeRate().multiply(execAmount), t.getCreatedAt()));
 
-        transactionBuffer.add(buildTrnasactionLog(t.getTxId4(), t.getTradeId(), t.getSellOrderId(),
+        transactionBuffer.add(buildTrnasactionLog(
+                t.getTxId4(), t.getTokenId(), t.getTradeId(), t.getSellOrderId(),
                 t.getSellWalletId(), "TOKEN", "OUT",
                 t.getExecutedVolume(), r.getSellTokenAfter(), r.getSellRemToken(),
                 r.getSellRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
     }
 
     // 체결 내역 생성을 위한 builder
-    private TransactionHistDTO buildTrnasactionLog(Long txId, Long tradeId, Long orderId, Long walletId, String asset,
+    private TransactionHistDTO buildTrnasactionLog(Long txId, Long tokenId, Long tradeId, Long orderId, Long walletId, String asset,
             String dir, BigDecimal amt, BigDecimal bal, BigDecimal remVol, BigDecimal remPrice, BigDecimal fee,
             OffsetDateTime time) {
         return TransactionHistDTO.builder()
-                .transactionId(txId).tradeId(tradeId).orderId(orderId).walletId(walletId)
-                .transactionType("TRADE").assetType(asset).direction(dir).amount(amt)
-                .balanceAfter(bal).remainingVolume(remVol).remainingPrice(remPrice)
-                .fee(fee)
-                .hashValue(txId + "_" + tradeId)
-                .createdAt(time).build();
+                .transactionId(txId).tokenId(tokenId).tradeId(tradeId)
+                .orderId(orderId).walletId(walletId).transactionType("TRADE")
+                .assetType(asset).direction(dir).amount(amt).balanceAfter(bal)
+                .remainingVolume(remVol).remainingPrice(remPrice).fee(fee)
+                .hashValue(txId + "_" + tradeId).createdAt(time).build();
     }
 
     // [DB] 1초마다 혹은 버퍼가 차면 DB에 한 번에 저장

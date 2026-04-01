@@ -123,39 +123,53 @@
     <!-- 매수 호가 조회 -->
     <select id="selectAllOrderBuyPrice" resultType="OrderPriceDTO">
         SELECT
-            order_price AS price,
-            SUM(remaining_token) AS totalVolume,
-            'BUY' AS side
-        FROM orders
-        WHERE token_id = #{tokenId}
-          AND order_side = 'BUY'::order_side_enum
-          AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
-          AND order_type = 'LIMIT'::order_type_enum
-        <if test="price != null">
-            AND order_price >= #{price}
-        </if>
-        GROUP BY order_price
-        ORDER BY order_price ASC
-            LIMIT 20
+            t.order_price::numeric AS price,
+            (SELECT SUM(remaining_token)::numeric
+            FROM orders
+            WHERE token_id = #{tokenId}
+                AND order_price = t.order_price
+                AND order_side = 'BUY'::order_side_enum
+                AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+            ) AS totalVolume,
+            'BUY'::order_side_enum AS side
+        FROM (
+            SELECT DISTINCT order_price
+            FROM orders
+            WHERE token_id = #{tokenId}
+                AND order_side = 'BUY'::order_side_enum
+                AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+                <if test="price != null">
+                    AND order_price &gt;= #{price}
+                </if>
+            ORDER BY order_price DESC
+            LIMIT 30
+        ) t;
     </select>
 
     <!-- 매도 호가 조회 -->
     <select id="selectAllOrderSellPrice" resultType="OrderPriceDTO">
         SELECT
-            order_price AS price,
-            SUM(remaining_token) AS totalVolume,
-            'SELL' AS side
-        FROM orders
-        WHERE token_id = #{tokenId}
-          AND order_side = 'SELL'::order_side_enum
-          AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
-          AND order_type = 'LIMIT'::order_type_enum
-        <if test="price != null">
-            AND order_price &lt;= #{price}
-        </if>
-        GROUP BY order_price
-        ORDER BY order_price DESC
-            LIMIT 20
+            t.order_price::numeric AS price,
+            (SELECT SUM(remaining_token)::numeric
+            FROM orders
+            WHERE token_id = #{tokenId}
+                AND order_price = t.order_price
+                AND order_side = 'SELL'::order_side_enum
+                AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+            ) AS totalVolume,
+            'SELL'::order_side_enum AS side
+        FROM (
+            SELECT DISTINCT order_price
+            FROM orders
+            WHERE token_id = #{tokenId}
+                AND order_side = 'SELL'::order_side_enum
+                AND order_state IN ('NEW'::order_state_enum, 'PARTIAL'::order_state_enum)
+                <if test="price != null">
+                    AND order_price &lt;= #{price}
+                </if>
+            ORDER BY order_price ASC
+            LIMIT 30
+        ) t;
     </select>
 
     <!-- 체결 조회 -->

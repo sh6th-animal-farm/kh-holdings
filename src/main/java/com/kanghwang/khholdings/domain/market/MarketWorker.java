@@ -70,13 +70,13 @@ public class MarketWorker {
 
 				messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
 
-				System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId()
-					+ ", 시가: " + event.getOpeningPrice()
-					+ ", 고가: " + event.getHighPrice()
-					+ ", 저가: " + event.getLowPrice()
-					+ ", 종가: " + event.getClosingPrice()
-					+ ", 거래량: " + event.getTradeVolume()
-					+ ", 캔들 시간: " + event.getCandleTime());
+				System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId());
+				// 	+ ", 시가: " + event.getOpeningPrice()
+				// 	+ ", 고가: " + event.getHighPrice()
+				// 	+ ", 저가: " + event.getLowPrice()
+				// 	+ ", 종가: " + event.getClosingPrice()
+				// 	+ ", 거래량: " + event.getTradeVolume()
+				// 	+ ", 캔들 시간: " + event.getCandleTime());
 			} catch (Exception e) {
 				log.error("[MarketWorker] OHLCV 및 차트 업데이트 송신 오류: ", e);
 			}
@@ -94,14 +94,14 @@ public class MarketWorker {
 			messagingTemplate.convertAndSend("/topic/tokenList/" + event.getTokenId(), event);
 
 			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
-					+ " 토큰명: " + event.getTokenName()
-					+ ", 현재가: " + event.getMarketPrice()
-					+ ", 시가: " + event.getOpenPrice()
-					+ ", 고가: " + event.getHighPrice()
-					+ ", 저가: " + event.getLowPrice()
-					+ ", 등락률: " + event.getChangeRate() + "%"
-					+ ", 거래대금: " + event.getDailyTradeVolume()
-					);
+					+ " 토큰명: " + event.getTokenName());
+			// 		+ ", 현재가: " + event.getMarketPrice()
+			// 		+ ", 시가: " + event.getOpenPrice()
+			// 		+ ", 고가: " + event.getHighPrice()
+			// 		+ ", 저가: " + event.getLowPrice()
+			// 		+ ", 등락률: " + event.getChangeRate() + "%"
+			// 		+ ", 거래대금: " + event.getDailyTradeVolume()
+			// 		);
 		});
 	}
 }

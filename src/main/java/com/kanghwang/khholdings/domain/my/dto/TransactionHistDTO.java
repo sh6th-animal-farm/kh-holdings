@@ -1,9 +1,13 @@
 package com.kanghwang.khholdings.domain.my.dto;
 
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @Setter
@@ -12,6 +16,7 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 public class TransactionHistDTO {
     private Long transactionId;                 // 체결 내역 번호
+    private Long tokenId;                       // 토큰 번호
     private Long tradeId;                       // 거래 번호
     private Long orderId;                       // 주문 번호
     private Long walletId;                      // 지갑 번호
