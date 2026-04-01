@@ -4,28 +4,34 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import com.kanghwang.khholdings.domain.order.type.OrderSide;
-import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.market.MarketRepository;
+import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
-import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -247,47 +253,53 @@ public class MarketService {
     // 매수 호가 조회
     public List<OrderPriceDTO> selectAllOrderBuyPrice(Long tokenId) {
         String key = redisKeyManager.getOrderBookAggrKey(tokenId, OrderSide.BUY);
+        RScoredSortedSet<String> aggrSet = redissonClient.getScoredSortedSet(key + ":index");
         RMap<String, BigDecimal> aggrMap = redissonClient.getMap(key);
 
-        List<OrderPriceDTO> result = aggrMap.readAllEntrySet().stream()
-            .map(entry -> OrderPriceDTO.builder()
-                .price(new BigDecimal(entry.getKey()))
-                .totalVolume(new BigDecimal(String.valueOf(entry.getValue())))
-                .side(OrderSide.BUY)
-                .build())
-            .sorted(Comparator.comparing(OrderPriceDTO::getPrice))
-            .limit(30)
-            .collect(Collectors.toList());
+        // 1. 정렬된 셋에서 가장 비싼 30개 가격(Key)만 가져옴
+        Collection<String> top30Prices = aggrSet.valueRangeReversed(0, 29);
 
-        if(result == null || result.isEmpty()) {
-            BigDecimal price = getCurrentPrice(tokenId);
-            return marketRepository.selectAllOrderBuyPrice(tokenId, price);
+        // 2. Redis에 호가 정보가 없으면 DB에서 조회
+        if (top30Prices == null || top30Prices.isEmpty()) {
+            return marketRepository.selectAllOrderBuyPrice(tokenId, getCurrentPrice(tokenId));
         }
 
-        return result;
+        // 3. Redis에 있으면 해당 30개 가격에 대한 수량울 Map에서 가져옴
+        Map<String, BigDecimal> volumes = aggrMap.getAll(new HashSet<>(top30Prices));
+
+        return top30Prices.stream()
+            .map(p -> OrderPriceDTO.builder()
+                .price(new BigDecimal(p))
+                .totalVolume(volumes.get(p))
+                .side(OrderSide.BUY)
+                .build())
+            .collect(Collectors.toList());
     }
 
     // 매도 호가 조회
     public List<OrderPriceDTO> selectAllOrderSellPrice(Long tokenId) {
         String key = redisKeyManager.getOrderBookAggrKey(tokenId, OrderSide.SELL);
+        RScoredSortedSet<String> aggrSet = redissonClient.getScoredSortedSet(key + ":index");
         RMap<String, BigDecimal> aggrMap = redissonClient.getMap(key);
 
-        List<OrderPriceDTO> result = aggrMap.readAllEntrySet().stream()
-            .map(entry -> OrderPriceDTO.builder()
-                .price(new BigDecimal(entry.getKey()))
-                .totalVolume(new BigDecimal(String.valueOf(entry.getValue())))
-                .side(OrderSide.SELL)
-                .build())
-            .sorted(Comparator.comparing(OrderPriceDTO::getPrice).reversed())
-            .limit(30)
-            .collect(Collectors.toList());
+        // 1. 정렬된 셋에서 가장 싼 30개 가격(Key)만 가져옴
+        Collection<String> top30Prices = aggrSet.valueRange(0, 29);
 
-        if(result == null || result.isEmpty()) {
-            BigDecimal price = getCurrentPrice(tokenId);
-            return marketRepository.selectAllOrderSellPrice(tokenId, price);
+        // 2. Redis에 호가 정보가 없으면 DB에서 조회
+        if (top30Prices == null || top30Prices.isEmpty()) {
+            return marketRepository.selectAllOrderSellPrice(tokenId, getCurrentPrice(tokenId));
         }
 
-        return result;
+        // 3. Redis에 있으면 해당 30개 가격에 대한 수량울 Map에서 가져옴
+        Map<String, BigDecimal> volumes = aggrMap.getAll(new HashSet<>(top30Prices));
+
+        return top30Prices.stream()
+            .map(p -> OrderPriceDTO.builder()
+                .price(new BigDecimal(p))
+                .totalVolume(volumes.get(p))
+                .side(OrderSide.SELL)
+                .build())
+            .collect(Collectors.toList());
     }
 
     // 체결 조회

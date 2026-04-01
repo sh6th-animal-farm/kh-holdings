@@ -31,7 +31,7 @@ public class OrderController {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.", null);
 		}
 
-		return  ApiResponseUtil.ok("토큰 보유 수량 조회에 성공했습니다.", data);
+		return ApiResponseUtil.ok("토큰 보유 수량 조회에 성공했습니다.", data);
 	}
 
 	// 주문 가능 금액 조회
@@ -42,7 +42,7 @@ public class OrderController {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.", null);
 		}
 
-		return  ApiResponseUtil.ok("주문 가능 금액 조회에 성공했습니다.", data);
+		return ApiResponseUtil.ok("주문 가능 금액 조회에 성공했습니다.", data);
 	}
 
 	// 매수/매도 주문
