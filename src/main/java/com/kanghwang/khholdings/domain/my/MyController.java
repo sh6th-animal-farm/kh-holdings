@@ -7,12 +7,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
 import com.kanghwang.khholdings.domain.my.dto.MyTransactionHistDTO;
+import com.kanghwang.khholdings.domain.my.dto.UserInfoDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 import com.kanghwang.khholdings.global.util.ApiResponseUtil;
@@ -73,13 +75,9 @@ public class MyController {
 	}
 
 	// 계좌 생성 및 연동
-	@PostMapping("/craete-account/{userId}")
-	public ResponseEntity<ApiResponse<Long>> createAndSelectAccount(
-		@PathVariable Long userId,
-		@RequestParam(defaultValue = "user") String username,
-		@RequestParam(defaultValue = "USER") String role,
-		@RequestParam(defaultValue = "GENERAL") String type){
-		Long data = myService.createAndSelectAccount(userId, username, role, type);
+	@PostMapping("/craete-account")
+	public ResponseEntity<ApiResponse<Long>> createAndSelectAccount(@RequestBody UserInfoDTO userInfo){
+		Long data = myService.createAndSelectAccount(userInfo.getUserId(), userInfo.getUsername(), userInfo.getRole(), userInfo.getType());
 		if (data == null) {
 			return ApiResponseUtil.ok("계좌 생성에 실패했습니다.", null);
 		}
