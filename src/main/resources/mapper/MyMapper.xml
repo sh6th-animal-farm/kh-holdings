@@ -176,7 +176,36 @@
             LIMIT 10 OFFSET #{offset}
     </select>
 
-    <select id="selectAccount">
+    <select id="existsByUserId" parameterType="long" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM users
+            WHERE user_id = #{userId}
+        )
+    </select>
+
+    <insert id="createUser" parameterType="UserInfoDTO">
+        INSERT INTO users(user_id, username, password, user_class, user_type)
+        VALUES (
+            #{userId},
+            #{username},
+            '1234',
+            #{role}::user_class_enum,
+            #{type}::user_type_enum
+        )
+    </insert>
+
+    <insert id="createAccount" parameterType="long">
+        INSERT INTO wallets (user_id, account_no, cash_balance, bank_name)
+        VALUES (
+           #{userId},
+           'KH_' || LPAD(#{userId}::text, 6, '0'),
+           5000000,
+           'kh 증권'
+       )
+    </insert>
+
+    <select id="selectAccount" parameterType="long" resultType="long">
         SELECT
             wallet_id
         FROM
