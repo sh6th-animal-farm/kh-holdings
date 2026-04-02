@@ -68,10 +68,10 @@ public class MarketWorker {
 				String channelStr = channel.toString();
 				String[] parts = channelStr.split(":");
 
-				String tokenId = parts[parts.length - 1];
-				String unit = parts[parts.length - 2];
+				String tokenId = parts[parts.length - 2];
+				String unit = parts[parts.length - 1];
 
-				String destination = "/topic/candles/" + unit + "/" + tokenId;
+				String destination = "/topic/candles/" + tokenId + "/" + unit;
 				messagingTemplate.convertAndSend(destination, event);
 
 				System.out.println("[MarketWorker] 차트 실시간 업데이트: " + destination);
