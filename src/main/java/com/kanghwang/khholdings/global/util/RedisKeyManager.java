@@ -34,7 +34,7 @@ public class RedisKeyManager {
 
     // 4. 차트/틱 소식 (TOPIC) : 단위별 봉 데이터 실시간 전파용
     public String getCandleTopicKey(Long tokenId, int unit) {
-        return getPrefix() + "candle:topic:" + unit + "m:" + tokenId;
+        return getPrefix() + "candle:topic:" + tokenId + ":" + unit;
     }
 
     // 5. 호가창 (MAP): 웹소켓을 통해 호가 정보를 브라우저에 보내줄 때 사용
