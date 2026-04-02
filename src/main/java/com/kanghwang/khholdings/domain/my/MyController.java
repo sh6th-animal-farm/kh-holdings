@@ -75,7 +75,7 @@ public class MyController {
 	}
 
 	// 계좌 생성 및 연동
-	@PostMapping("/craete-account")
+	@PostMapping("/create-account")
 	public ResponseEntity<ApiResponse<Long>> createAndSelectAccount(@RequestBody UserInfoDTO userInfo){
 		Long data = myService.createAndSelectAccount(userInfo.getUserId(), userInfo.getUsername(), userInfo.getRole(), userInfo.getType());
 		if (data == null) {
