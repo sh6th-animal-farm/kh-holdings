@@ -93,7 +93,7 @@
         </foreach>
     </insert>
 
-    <!-- 1분 봉 데이터 벌크 인서트 -->
+    <!-- 봉 데이터 벌크 인서트 -->
     <insert id="insertCandlesBatch">
         INSERT INTO token_quotes (
             token_id, candle_time, opening_price,
@@ -102,13 +102,12 @@
         ) VALUES
         <foreach collection="list" item="c" separator=",">
             (
-            #{c.tokenId}, #{c.candleTime},
-            #{c.openingPrice}::numeric, #{c.highPrice}::numeric,
-            #{c.lowPrice}::numeric, #{c.closingPrice}::numeric,
-            #{c.tradeVolume}::numeric, 1
+            #{c.tokenId}, #{c.candleTime}, #{c.openingPrice}::numeric,
+            #{c.highPrice}::numeric,  #{c.lowPrice}::numeric, #{c.closingPrice}::numeric,
+            #{c.tradeVolume}::numeric, #{c.unit}::numeric
             )
         </foreach>
-        ON CONFLICT (token_id, candle_time)
+        ON CONFLICT (token_id, candle_time, unit)
         DO UPDATE SET
             high_price = EXCLUDED.high_price,
             low_price = EXCLUDED.low_price,

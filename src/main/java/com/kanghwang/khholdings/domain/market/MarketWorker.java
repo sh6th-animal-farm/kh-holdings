@@ -66,11 +66,15 @@ public class MarketWorker {
 		candleTopic.addListener(CandleDTO.class, (pattern, channel, event) -> {
 			try {
 				String channelStr = channel.toString();
-				String tokenId = channelStr.substring(channelStr.lastIndexOf(":") + 1);
+				String[] parts = channelStr.split(":");
 
-				messagingTemplate.convertAndSend("/topic/candles/" + tokenId, event);
+				String tokenId = parts[parts.length - 1];
+				String unit = parts[parts.length - 2];
 
-				System.out.println("[MarketWorker] -> [/topic/candles/] OHLCV 및 차트 업데이트 토큰 id: " + event.getTokenId());
+				String destination = "/topic/candles/" + unit + "/" + tokenId;
+				messagingTemplate.convertAndSend(destination, event);
+
+				System.out.println("[MarketWorker] 차트 실시간 업데이트: " + destination);
 				// 	+ ", 시가: " + event.getOpeningPrice()
 				// 	+ ", 고가: " + event.getHighPrice()
 				// 	+ ", 저가: " + event.getLowPrice()
@@ -78,7 +82,7 @@ public class MarketWorker {
 				// 	+ ", 거래량: " + event.getTradeVolume()
 				// 	+ ", 캔들 시간: " + event.getCandleTime());
 			} catch (Exception e) {
-				log.error("[MarketWorker] OHLCV 및 차트 업데이트 송신 오류: ", e);
+				log.error("[MarketWorker] 차트 실시간 업데이트 송신 오류: ", e);
 			}
 		});
 
@@ -93,8 +97,8 @@ public class MarketWorker {
 			// 2. 특정 토큰용(목록 페이지 우측 패널, 상세 페이지)
 			messagingTemplate.convertAndSend("/topic/tokenList/" + event.getTokenId(), event);
 
-			System.out.println("[MarketWorker] -> [/topic/tokenList] 토큰 리스트 업데이트 : "
-					+ " 토큰명: " + event.getTokenName());
+			System.out.println("[MarketWorker] 토큰 리스트 업데이트 : /topic/tokenList/" + event.getTokenId());
+			//		+ " 토큰명: " + event.getTokenName()
 			// 		+ ", 현재가: " + event.getMarketPrice()
 			// 		+ ", 시가: " + event.getOpenPrice()
 			// 		+ ", 고가: " + event.getHighPrice()
