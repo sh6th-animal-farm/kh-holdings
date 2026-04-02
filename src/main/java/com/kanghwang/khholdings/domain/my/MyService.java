@@ -49,8 +49,8 @@ public class MyService {
 		if(!isExist){
 			// 기업이 아닌 모든 사용자는 USER로 간주 (SYSTEM, ADMIN 등)
 			if (!"ENTERPRISE".equals(role)) role = "USER";
-			UserInfoDTO user = new UserInfoDTO(userId, username, role, type);
-			myRepository.createUser(user);
+			UserInfoDTO userInfo = new UserInfoDTO(userId, username, role, type);
+			myRepository.createUser(userInfo);
 		}
 
 		// 3. 계좌 생성
