@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.my.dto.HoldingDTO;
 import com.kanghwang.khholdings.domain.my.dto.MyTransactionHistDTO;
+import com.kanghwang.khholdings.domain.my.dto.UserInfoDTO;
 import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
 
 @Service
@@ -36,6 +37,26 @@ public class MyService {
 
 	// 계좌 연동
 	public Long selectAccount(Long userId){
+		return myRepository.selectAccount(userId);
+	}
+
+	// 계좌 생성 및 연동
+	public Long createAndSelectAccount(Long userId, String username, String role, String type){
+		// 1. 사용자 조회
+		boolean isExist = myRepository.existsByUserId(userId);
+
+		// 2. 계정 없으면 생성
+		if(!isExist){
+			// 기업이 아닌 모든 사용자는 USER로 간주 (SYSTEM, ADMIN 등)
+			if (!"ENTERPRISE".equals(role)) role = "USER";
+			UserInfoDTO user = new UserInfoDTO(userId, username, role, type);
+			myRepository.createUser(user);
+		}
+
+		// 3. 계좌 생성
+		myRepository.createAccount(userId);
+
+		// 4. 새로 생성된 계좌 조회 및 반환
 		return myRepository.selectAccount(userId);
 	}
 }
