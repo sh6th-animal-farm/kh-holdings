@@ -62,6 +62,7 @@ jobs:
           host: ${{ secrets.MINSJES_SERVER_HOST }}
           username: ${{ secrets.MINSJES_SERVER_USER }}
           password: ${{ secrets.MINSJES_SERVER_PASSWORD }}
+          port: ${{ secrets.MINSJES_SERVER_PORT }}
           script: |
             cd /home/student/kh-holdings
             docker compose down
