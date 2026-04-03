@@ -36,7 +36,12 @@ jobs:
           docker build --no-cache -t ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest
 
-      # 3. 서버 배포 (SSH 접속 후 Docker 실행)
+  # 3. 서버 배포 (SSH 접속 후 Docker 실행)
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # 3jun
       - name: Deploy to Server
         uses: appleboy/ssh-action@master
         with:
@@ -44,17 +49,21 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
-            # 1. 안 쓰는 이미지 미리 삭제 (용량 확보)
+            cd /home/${{ secrets.USERNAME }}/kh-holdings
+            docker compose pull
+            docker compose up -d # 자동으로 기존 컨테이너 죽이고(down) 새 컨테이너로 교체
             docker image prune -f
-            # 최신 이미지 pull
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest
-            # 기존 컨테이너 중지 및 삭제
-            docker stop kh-holdings || true
-            docker rm kh-holdings || true
-            # 새 컨테이너 실행 (백그라운드 -d)
-            docker run -d --name kh-holdings \
-            -p 443:443 \
-            -p 80:80 \
-            -v "/home/${{ secrets.SERVER_USER }}/kh-config:/config" \
-            ${{ secrets.DOCKERHUB_USERNAME }}/kh-holdings:latest \
-            --spring.config.location=file:/config/application.properties
+
+      # Shinhan
+      - name: Deploy to Minsjes Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.MINSJES_SERVER_HOST }}
+          username: ${{ secrets.MINSJES_SERVER_USER }}
+          password: ${{ secrets.MINSJES_SERVER_PASSWORD }}
+          port: ${{ secrets.MINSJES_SERVER_PORT }}
+          script: |
+            cd /home/student/kh-holdings
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
