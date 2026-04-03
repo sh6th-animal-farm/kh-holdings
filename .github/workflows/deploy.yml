@@ -49,19 +49,22 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
-            cd ~/kh-holdings
+            cd /home/${{ secrets.USERNAME }}/kh-holdings
+            docker compose down
             docker-compose pull
             docker-compose up -d
+            docker image prune -f
 
       # Shinhan
-      - name: Deploy to Shinhan Server
+      - name: Deploy to Minsjes Server
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.MINSJES_SERVER_HOST }}
           username: ${{ secrets.MINSJES_SERVER_USER }}
           password: ${{ secrets.MINSJES_SERVER_PASSWORD }}
           script: |
-            cd ~/kh-holdings
+            cd /home/student/kh-holdings
+            docker compose down
             docker-compose pull
             docker-compose up -d
             docker image prune -f
