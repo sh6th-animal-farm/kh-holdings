@@ -57,9 +57,9 @@ jobs:
       - name: Deploy to Shinhan Server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.SHINHAN_SERVER_HOST }}
-          username: ${{ secrets.SHINHAN_SERVER_USER }}
-          password: ${{ secrets.SHINHAN_SERVER_PASSWORD }}
+          host: ${{ secrets.MINSJES_SERVER_HOST }}
+          username: ${{ secrets.MINSJES_SERVER_USER }}
+          password: ${{ secrets.MINSJES_SERVER_PASSWORD }}
           script: |
             cd ~/kh-holdings
             docker-compose pull
