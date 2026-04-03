@@ -49,7 +49,7 @@ public class MarketWorker {
 		RPatternTopic orderTopic = redissonClient.getPatternTopic(redisKeyManager.getPrefix() + "orderbook:aggr:*:*");
 
 		orderTopic.addListener(OrderbookDTO.class, (pattern, channel, event) -> {
-			// channel 형태: "kh:orderbook:aggr:777:buy"
+			// channel 형태 "kh:orderbook:aggr:777:buy"
 			String[] parts = channel.toString().split(":");
 			String tokenId = parts[parts.length - 2];
 			String side = parts[parts.length - 1];
