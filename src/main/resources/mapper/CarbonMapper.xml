@@ -17,7 +17,7 @@
             h.token_id,
             SUM(CASE WHEN w.wallet_id = #{walletId} THEN h.token_balance ELSE 0 END) as my_balance,
             SUM(CASE WHEN u.user_class = 'ENTERPRISE' THEN h.token_balance ELSE 0 END) as enterprise_total
-        FROM kh_holdings.holdings h
+        FROM holdings h
                  JOIN wallets w ON h.wallet_id = w.wallet_id
                  JOIN users u ON w.user_id = u.user_id
         GROUP BY h.token_id

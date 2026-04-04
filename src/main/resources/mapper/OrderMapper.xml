@@ -84,9 +84,9 @@
             (
             #{h.transactionId}, #{h.tokenId}, #{h.tradeId},
             #{h.orderId}, #{h.walletId},
-            #{h.transactionType}::kh_holdings.transaction_type_enum,
-            #{h.assetType}::kh_holdings.asset_type_enum,
-            #{h.direction}::kh_holdings.direction_enum,
+            #{h.transactionType}::transaction_type_enum,
+            #{h.assetType}::asset_type_enum,
+            #{h.direction}::direction_enum,
             #{h.amount}, #{h.balanceAfter}, #{h.remainingVolume},
             #{h.remainingPrice}, #{h.fee}, #{h.hashValue}, #{h.createdAt}
             )
