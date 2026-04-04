@@ -41,8 +41,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # 3jun
-#      - name: Deploy to 3jun Server
+      # EC2
+#      - name: Deploy to Server
 #        uses: appleboy/ssh-action@master
 #        with:
 #          host: ${{ secrets.SERVER_HOST }}
