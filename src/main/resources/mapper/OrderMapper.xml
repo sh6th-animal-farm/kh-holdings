@@ -110,6 +110,7 @@
         ON CONFLICT (token_id, candle_time, unit)
         DO UPDATE SET
             high_price = EXCLUDED.high_price,
+            low_price = EXCLUDED.low_price,
             closing_price = EXCLUDED.closing_price,
             trade_volume = EXCLUDED.trade_volume
     </insert>
