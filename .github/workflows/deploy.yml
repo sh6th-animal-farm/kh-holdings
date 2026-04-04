@@ -42,19 +42,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 3jun
-      - name: Deploy to Server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_KEY }}
-          script: |
-            cd /home/${{ secrets.USERNAME }}/kh-holdings
-            docker compose pull
-            docker compose up -d # 자동으로 기존 컨테이너 죽이고(down) 새 컨테이너로 교체
-            docker image prune -f
+#      - name: Deploy to 3jun Server
+#        uses: appleboy/ssh-action@master
+#        with:
+#          host: ${{ secrets.SERVER_HOST }}
+#          username: ${{ secrets.SERVER_USER }}
+#          key: ${{ secrets.SERVER_KEY }}
+#          script: |
+#            cd /home/${{ secrets.USERNAME }}/kh-holdings
+#            docker compose pull
+#            docker compose up -d # 자동으로 기존 컨테이너 죽이고(down) 새 컨테이너로 교체
+#            docker image prune -f
 
-      # Shinhan
+      # Minsjes
       - name: Deploy to Minsjes Server
         uses: appleboy/ssh-action@master
         with:
