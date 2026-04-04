@@ -73,7 +73,7 @@
 
     <!-- 체결 내역 벌크 인서트 -->
     <insert id="bulkInsertTransactionHists">
-        INSERT INTO kh_holdings.transaction_hists (
+        INSERT INTO transaction_hists (
         transaction_id, token_id, trade_id,
         order_id, wallet_id, transaction_type,
         asset_type, direction, amount, balance_after,
@@ -84,9 +84,9 @@
             (
             #{h.transactionId}, #{h.tokenId}, #{h.tradeId},
             #{h.orderId}, #{h.walletId},
-            #{h.transactionType}::kh_holdings.transaction_type_enum,
-            #{h.assetType}::kh_holdings.asset_type_enum,
-            #{h.direction}::kh_holdings.direction_enum,
+            #{h.transactionType}::transaction_type_enum,
+            #{h.assetType}::asset_type_enum,
+            #{h.direction}::direction_enum,
             #{h.amount}, #{h.balanceAfter}, #{h.remainingVolume},
             #{h.remainingPrice}, #{h.fee}, #{h.hashValue}, #{h.createdAt}
             )
