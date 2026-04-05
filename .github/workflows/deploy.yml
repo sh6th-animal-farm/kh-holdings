@@ -51,7 +51,8 @@ jobs:
 #          script: |
 #            cd /home/${{ secrets.USERNAME }}/kh-holdings
 #            docker compose pull
-#            docker compose up -d # 자동으로 기존 컨테이너 죽이고(down) 새 컨테이너로 교체
+#            docker compose down
+#            docker compose up -d
 #            docker image prune -f
 
       # Minsjes
@@ -65,5 +66,6 @@ jobs:
           script: |
             cd /home/student/kh-holdings
             docker compose pull
+            docker compose down
             docker compose up -d
             docker image prune -f
