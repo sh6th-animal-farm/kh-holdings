@@ -1,7 +1,7 @@
 //package com.kanghwang.khholdings.order;
 //
 //import com.kanghwang.khholdings.domain.market.MarketRepository;
-//import com.kanghwang.khholdings.domain.order.OrderRepository;
+//import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 //import com.kanghwang.khholdings.domain.order.service.OrderService;
 //import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 //import com.kanghwang.khholdings.domain.order.type.OrderSide;
