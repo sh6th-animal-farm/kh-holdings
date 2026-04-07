@@ -66,4 +66,9 @@ public class RedisKeyManager {
     public String getCandleKey(Long tokenId, int unit, Long timestamp) {
         return getPrefix() + "candle:" + unit + "m:" + tokenId + ":" + timestamp;
     }
+
+    // 11. 취소 주문 정보
+    public String getCancelKey(Long orderId) {
+        return getPrefix() + "cancel:mark:" + orderId;
+    }
 }

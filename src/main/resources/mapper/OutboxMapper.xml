@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kanghwang.khholdings.domain.order.repository.OutboxRepository">
+    <insert id="insertOutbox">
+        INSERT INTO order_outbox (
+            order_id,
+            type,
+            payload,
+            status,
+            retry_count,
+            created_at,
+            updated_at
+        ) VALUES (
+            #{orderId},
+            #{type},
+            #{payload},
+            #{status},
+            0,
+            NOW(),
+            NOW()
+        )
+    </insert>
+
+    <update id="updateOutboxStatus">
+        UPDATE order_outbox
+        SET
+            status = #{status},
+            retry_count = #{retryCount},
+            updated_at = NOW()
+        WHERE order_id = #{orderId}
+            AND type = #{type}
+    </update>
+
+    <update id="updateStatusIfPending">
+        UPDATE order_outbox
+        SET
+            status = #{status},
+            updated_at = NOW()
+        WHERE order_id = #{orderId}
+            AND type = #{type}
+            AND status = 'PENDING'
+    </update>
+
+    <update id="updateStatusToCancelled">
+        UPDATE order_outbox
+        SET status = 'CANCELLED'
+        WHERE order_id = #{orderId}
+          AND type = 'ORDER'
+          AND status IN ('PENDING', 'PROCESSING');
+    </update>
+
+    <select id="findPendingOrdersForUpdate" resultType="OrderOutboxDTO">
+        SELECT * FROM order_outbox
+        WHERE status = 'PENDING'
+          AND retry_count <![CDATA[ < ]]> 5
+        ORDER BY created_at ASC
+            LIMIT 10
+        FOR UPDATE SKIP LOCKED
+    </select>
+</mapper>

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.kanghwang.khholdings.domain.order.dto.CancelRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.service.OrderService;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
@@ -55,7 +56,8 @@ public class OrderController {
 	// 주문 취소
 	@PostMapping("/cancel/{tokenId}/{orderId}")
 	public ResponseEntity<ApiResponse<Void>> cancelOrder(@PathVariable Long tokenId, @PathVariable Long orderId) {
-		orderService.cancelOrder(tokenId, orderId);
+		CancelRequestDTO cancelDTO = new CancelRequestDTO(orderId, tokenId);
+		orderService.cancelOrder(cancelDTO);
 		return ApiResponseUtil.ok("주문 취소가 완료되었습니다.", null);
 	}
 }

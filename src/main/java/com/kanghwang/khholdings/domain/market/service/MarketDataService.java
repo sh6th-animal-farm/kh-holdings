@@ -1,4 +1,4 @@
-package com.kanghwang.khholdings.domain.market.Service;
+package com.kanghwang.khholdings.domain.market.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
-import com.kanghwang.khholdings.domain.order.OrderRepository;
+import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 

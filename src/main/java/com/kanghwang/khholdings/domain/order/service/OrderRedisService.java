@@ -12,13 +12,17 @@ import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
 import org.springframework.stereotype.Service;
 
-import com.kanghwang.khholdings.domain.market.Service.MarketDataService;
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.market.service.MarketDataService;
+import com.kanghwang.khholdings.domain.order.dto.CancelRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.OrderInfoDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
+import com.kanghwang.khholdings.domain.order.type.OrderState;
 import com.kanghwang.khholdings.domain.order.type.OrderType;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
@@ -32,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class OrderRedisService {
 
+	private final OrderRepository orderRepository;
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
 	private final RedissonClient redissonClient;
 	private final RedisKeyManager redisKeyManager;
@@ -75,6 +80,22 @@ public class OrderRedisService {
 		RScoredSortedSet<Long> myOrderBook = redissonClient.getScoredSortedSet(myOrderBookKey); // 매수(매도) 호가창 ('가격':'주문번호')
 		RScoredSortedSet<Long> counterOrderBook = redissonClient.getScoredSortedSet(counterOrderBookKey); // 매도(매수) 호가창 ('가격':'주문번호')
 		RMap<Long, OrderRequestDTO> infoMap = redissonClient.getMap(orderInfoKey); // 매수 및 매도 주문 상세 ('주문번호':'주문상세(DTO)')
+
+		// Race Condition 체크
+		// 주문이 도착하기 전에 취소 요청이 먼저 온 경우 매칭 엔진에 진입 X
+		String cancelKey = redisKeyManager.getCancelKey(myOrderId);
+		if (Boolean.TRUE.equals(redissonClient.getBucket(cancelKey).isExists())) {
+			log.warn("이미 취소 요청된 주문입니다. (ID: {})", myOrderId);
+			redissonClient.getBucket(cancelKey).delete(); // 마킹 삭제
+			return;
+		}
+
+		// 멱등성 체크
+		// 이미 처리 중이거나 처리된 주문인지 확인
+		if (infoMap.containsKey(myOrderId)) {
+			log.warn("이미 매칭 엔진에 존재하는 주문입니다. 중복 처리를 방지합니다. ID: {}", myOrderId);
+			return;
+		}
 
 		// 주문 요청 시, 호가창에 선 등록 (지정가만)
 		if (myOrderDTO.getOrderType() == OrderType.LIMIT) {
@@ -375,14 +396,45 @@ public class OrderRedisService {
 	}
 
 	// 주문 취소 (사용자가 직접)
-	public void cancelOrder(Long tokenId, Long orderId) {
+	public void cancelOrder(CancelRequestDTO cancelDto) {
+		Long tokenId = cancelDto.getTokenId();
+		Long orderId = cancelDto.getOrderId();
+
 		String orderInfoKey = redisKeyManager.getOrderInfoKey(tokenId);
 		RMap<Long, OrderRequestDTO> infoMap = redissonClient.getMap(orderInfoKey);
 
 		// 1. 주문 정보 확인
 		OrderRequestDTO orderInfo = infoMap.get(orderId);
+
 		if (orderInfo == null) {
-			throw new IllegalArgumentException("이미 취소되었거나 존재하지 않는 주문입니다.");
+			// DB에서 주문 정보를 가져오기
+			OrderInfoDTO dbOrderInfo =  orderRepository.getOrderInfoById(orderId);
+
+			// 이미 처리된 주문인 경우 종료
+			if (dbOrderInfo == null || dbOrderInfo.getOrderState() != OrderState.NEW) {
+				return;
+			}
+
+			// 취소 마킹
+			// 주문이 지연되어 뒤늦게 들어왔을 때, 취소 마킹이 있으면 매칭 엔진 진입 X
+			String cancelKey = redisKeyManager.getCancelKey(orderId);
+			redissonClient.getBucket(cancelKey).set("CANCELLED", 15, TimeUnit.MINUTES); // 유효시간 15분
+
+			log.info("매칭 엔진에 주문이 존재하지 않아 취소 마킹을 생성했습니다. (ID: {})", orderId);
+
+			// DB 정보를 바탕으로 환불 스트림 발행
+			RefundRequestDTO refundRequestDTO = new RefundRequestDTO(
+				snowflakeIdGenerator.nextId(),
+				orderId,
+				dbOrderInfo.getTotalPrice(),
+				dbOrderInfo.getOrderVolume()
+			);
+
+			redissonClient.getStream(redisKeyManager.getTradeStreamKey())
+				.add(StreamAddArgs.entry("data", refundRequestDTO));
+
+			log.info("Redis에 주문 정보가 없어 DB를 바탕으로 환불 스트림 발행 완료 (ID: {})", orderId);
+			return;
 		}
 
 		// 2. Redis 작업 (호가창 및 주문 상세에서 제거)

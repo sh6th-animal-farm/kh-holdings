@@ -1,4 +1,4 @@
-package com.kanghwang.khholdings.domain.order;
+package com.kanghwang.khholdings.domain.order.worker;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -29,6 +29,7 @@ import com.kanghwang.khholdings.domain.my.dto.TransactionHistDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.SettlementResultDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
+import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PreDestroy;
