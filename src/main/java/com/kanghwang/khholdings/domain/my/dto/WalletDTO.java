@@ -14,6 +14,7 @@ public class WalletDTO {
 	private Long userId;						// 사용자 번호
 	private String accountNo;					// 계좌번호
 	private String bankName;					// 은행명
+	private BigDecimal availableBalance; 		// 예수금
 	private BigDecimal cashBalance;				// 예수금
 	private BigDecimal frozen_amount;			// 동결 금액
 

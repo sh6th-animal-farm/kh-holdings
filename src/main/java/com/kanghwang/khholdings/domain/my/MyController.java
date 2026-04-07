@@ -33,7 +33,6 @@ public class MyController {
 		if (data == null) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.", null);
 		}
-
 		return  ApiResponseUtil.ok("지갑 조회에 성공했습니다.", data);
 	}
 
