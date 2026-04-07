@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.kanghwang.khholdings.domain.order.OrderRepository;
+import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 
 @Service

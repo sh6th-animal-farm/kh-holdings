@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.kanghwang.khholdings.domain.order.OrderRepository">
+<mapper namespace="com.kanghwang.khholdings.domain.order.repository.OrderRepository">
 
     <!-- 특정 토큰 보유 수량 조회 -->
     <select id="selectHoldingTokenBalance" parameterType="Long" resultType="bigdecimal">
@@ -114,4 +114,15 @@
             closing_price = EXCLUDED.closing_price,
             trade_volume = EXCLUDED.trade_volume
     </insert>
+
+    <!--  주문 정보 조회  -->
+    <select id="getOrderInfoById" resultType="OrderInfoDTO">
+        SELECT
+            order_id,
+            order_state,
+            order_volume,
+            total_price
+        FROM orders
+        WHERE order_id = #{orderId}
+    </select>
 </mapper>
