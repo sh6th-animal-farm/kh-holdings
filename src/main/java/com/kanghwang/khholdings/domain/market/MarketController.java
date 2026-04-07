@@ -3,7 +3,6 @@ package com.kanghwang.khholdings.domain.market;
 import java.math.BigDecimal;
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +18,7 @@ import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.market.service.MarketService;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 import com.kanghwang.khholdings.global.util.ApiResponseUtil;
+import com.kanghwang.khholdings.domain.market.Service.MarketDownService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 public class MarketController {
 
 	private final MarketService marketService;
-	private final MarketDownService binanceDataService;
+	private final MarketDownService marketDownService;
 
 	@GetMapping()
 	public ResponseEntity<ApiResponse<List<TokenListDTO>>> selectAll() {
@@ -131,7 +131,7 @@ public class MarketController {
 	@GetMapping("/sync/{symbol}")
 	public ResponseEntity<String> syncCandles(@PathVariable String symbol, @RequestParam Long tokenId, @RequestParam BigDecimal basePrice) {
 
-		binanceDataService.syncCustomScaledCandles(symbol, tokenId, basePrice);
+		marketDownService.syncCustomScaledCandles(symbol, tokenId, basePrice);
 
 		return ResponseEntity.ok(symbol + " 데이터 동기화 완료");
 	}
