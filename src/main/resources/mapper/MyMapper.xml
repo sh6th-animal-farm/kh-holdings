@@ -19,6 +19,7 @@
                 w.wallet_id,
                 w.bank_name,
                 w.account_no,
+                w.available_balance,
                 w.cash_balance,
                 COALESCE(SUM(h.purchased_value), 0) AS total_purchased_value,
                 COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS total_market_value
@@ -31,6 +32,7 @@
         SELECT
             bank_name AS bankName,
             account_no AS accountNo,
+            available_balance AS availableBalance,
             cash_balance AS cashBalance,
             total_purchased_value AS totalPurchasedValue,
             total_market_value AS totalMarketValue,

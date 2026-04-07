@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+    PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kanghwang.khholdings.domain.market.MarketRepository">
+
+    <insert id="upsertCandles">
+        INSERT INTO public.token_quotes (
+            token_id, unit, opening_price, high_price, low_price,
+            closing_price, trade_volume, trade_amount, candle_time, created_at
+            ) VALUES
+        <foreach collection="list" item="c" separator=",">
+            (
+            #{c.tokenId}, #{c.unit}, #{c.openingPrice}, #{c.highPrice},
+            #{c.lowPrice}, #{c.closingPrice}, #{c.tradeVolume},
+            #{c.tradeAmount}, #{c.candleTime}, NOW()
+            )
+        </foreach>
+        ON CONFLICT (token_id, candle_time, unit)
+        DO UPDATE SET
+        opening_price = EXCLUDED.opening_price,
+        high_price = EXCLUDED.high_price,
+        low_price = EXCLUDED.low_price,
+        closing_price = EXCLUDED.closing_price,
+        trade_volume = EXCLUDED.trade_volume,
+        trade_amount = EXCLUDED.trade_amount;
+    </insert>
+</mapper>

@@ -124,38 +124,49 @@ public class TradingSimulationBot {
 		return builder.build();
 	}
 
-	// 특정 토큰 주문
+	// 공격적인 주문 (벽 세우기 + 즉시 체결로 거래량 및 가격 유도)
 	private void createAggressiveOrder() {
 		var random = java.util.concurrent.ThreadLocalRandom.current();
-		long tokenId = 1L;
-
-		// 1. 특정 토큰의 현재가 가져오기
+		
+		// 1. Redis에서 현재 활성화된 모든 토큰 목록 가져오기
 		RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap("market:info");
-		TokenListDTO targetToken = marketInfoMap.get(tokenId);
+		List<TokenListDTO> tokens = new ArrayList<>(marketInfoMap.readAllValues());
 
-		if (targetToken == null || targetToken.getMarketPrice() == null) {
-			log.warn(">>>> [BOT] 타겟 토큰 정보를 찾을 수 없습니다.");
+		if (tokens.isEmpty()) {
+			log.warn(">>>> [BOT] 마켓 정보가 없어 MM 주문을 생성하지 못했습니다.");
+			return;
 		}
 
+		// 2. 무작위로 하나의 타겟 토큰 선정 (이제 1번 토큰 고정 아님!)
+		TokenListDTO targetToken = tokens.get(random.nextInt(tokens.size()));
+		Long tokenId = targetToken.getTokenId();
 		BigDecimal currentPrice = targetToken.getMarketPrice();
 
-		// 현재가 대비 ±5% 범위
-		double variation = 0.95 + (random.nextDouble() * 0.1);
+		if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) return;
+
+		// 3. 현실적인 가격/수량 결정 (현재가 기준 ±3% 범위)
+		double variation = 0.97 + (random.nextDouble() * 0.06);
 		BigDecimal targetPrice = currentPrice.multiply(BigDecimal.valueOf(variation))
 				.setScale(0, RoundingMode.HALF_UP);
 
-		BigDecimal volume = BigDecimal.valueOf(1.0 + random.nextDouble() * 2.0)
+		// 거래량도 1~10 사이로 무작위 (더 풍부하게)
+		BigDecimal volume = BigDecimal.valueOf(1.0 + random.nextDouble() * 9.0)
 				.setScale(4, RoundingMode.DOWN);
 
-		// 2. 매수/매도 방향 결정
-		// 타겟가가 현재가보다 높으면 매도벽을 만들고 매수로 긁음 (상승)
-		// 타겟가가 현재가보다 낮으면 매수벽을 만들고 매도로 긁음 (하락)
+		// 4. 메이커(벽)와 테이커(체결) 지갑 무작위 선정
+		Long makerId = testWalletIds[random.nextInt(testWalletIds.length)];
+		Long takerId = testWalletIds[random.nextInt(testWalletIds.length)];
+		while (makerId.equals(takerId)) {
+			takerId = testWalletIds[random.nextInt(testWalletIds.length)];
+		}
+
+		// 5. 매수/매도 방향 결정
 		OrderSide wallSide = (targetPrice.compareTo(currentPrice) > 0) ? OrderSide.SELL : OrderSide.BUY;
 		OrderSide takerSide = (wallSide == OrderSide.SELL) ? OrderSide.BUY : OrderSide.SELL;
 
-		// [STEP 1] 지정가 주문으로 '체결 대상' 생성 (벽 세우기)
+		// [STEP 1] 지정가 주문으로 '벽' 세우기 (메이커)
 		var limitBuilder = OrderRequestDTO.builder()
-				.walletId(6L)
+				.walletId(makerId)
 				.tokenId(tokenId)
 				.orderSide(wallSide)
 				.orderType(OrderType.LIMIT)
@@ -167,27 +178,34 @@ public class TradingSimulationBot {
 		} else {
 			limitBuilder.totalPrice(BigDecimal.ZERO);
 		}
-		orderService.placeOrder(limitBuilder.build());
+		
+		try {
+			orderService.placeOrder(limitBuilder.build());
+		} catch (Exception e) {
+			log.error(">>>> [BOT] MM 벽 주문 생성 실패: {}", e.getMessage());
+		}
 
-		// [STEP 2] 시장가 주문으로 즉시 체결 (벽 부수기)
-		// 시장가 매수는 totalPrice가 필요하고, 시장가 매도는 orderVolume이 필요함
+		// [STEP 2] 시장가 주문으로 즉시 체결 (테이커)
 		var marketBuilder = OrderRequestDTO.builder()
-				.walletId(7L)
+				.walletId(takerId)
 				.tokenId(tokenId)
 				.orderSide(takerSide)
 				.orderType(OrderType.MARKET)
-				.orderPrice(BigDecimal.ZERO); // 시장가는 가격 0
+				.orderPrice(BigDecimal.ZERO);
 
 		if (takerSide == OrderSide.BUY) {
-			// 시장가 매수: 수량 0, 총액 입력
 			marketBuilder.orderVolume(BigDecimal.ZERO);
 			marketBuilder.totalPrice(targetPrice.multiply(volume));
 		} else {
-			// 시장가 매도: 수량 입력, 총액 0
 			marketBuilder.orderVolume(volume);
 			marketBuilder.totalPrice(BigDecimal.ZERO);
 		}
-		orderService.placeOrder(marketBuilder.build());
+		
+		try {
+			orderService.placeOrder(marketBuilder.build());
+		} catch (Exception e) {
+			log.error(">>>> [BOT] MM 체결 주문 생성 실패: {}", e.getMessage());
+		}
 	}
 }
 

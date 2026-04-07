@@ -40,4 +40,8 @@ public interface MarketRepository {
 
 	// 토큰 OHLCV 조회
 	TokenListDTO selectTokenOhlcv(Long tokenId);
+
+
+	// 바이낸스에서 캔들데이터 다운로드
+	void upsertCandles(List<CandleDTO> list);
 }
