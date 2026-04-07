@@ -64,7 +64,7 @@ jobs:
           password: ${{ secrets.MINSJES_SERVER_PASSWORD }}
           port: ${{ secrets.MINSJES_SERVER_PORT }}
           script: |
-            cd /home/student/kh-holdings
+            cd /home/${{ secrets.MINSJES_SERVER_USER }}/kh-holdings
             docker compose pull
             docker compose down
             docker compose up -d
