@@ -67,8 +67,13 @@ public class RedisKeyManager {
         return getPrefix() + "candle:" + unit + "m:" + tokenId + ":" + timestamp;
     }
 
-    // 11. 취소 주문 정보
+    // 11. 취소 주문 정보 (STRING)
     public String getCancelKey(Long orderId) {
         return getPrefix() + "cancel:mark:" + orderId;
+    }
+
+    // 12. 사용자별 주문 정보 (HASH)
+    public String getPersonalOrderBookKey(Long walletId, OrderSide side) {
+        return getPrefix() + "orderbook:" + walletId + ":" + side.name().toLowerCase();
     }
 }
