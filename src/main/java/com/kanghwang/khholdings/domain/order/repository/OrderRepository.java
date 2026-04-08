@@ -27,10 +27,10 @@ public interface OrderRepository {
 	void callPlaceOrderProcedure(OrderRequestDTO orderDTO);
 
 	// 정산
-	void p_process_transaction_settlement(TransactionRequestDTO trade, SettlementResultDTO result);
+	void callUpdateWalletAndHolding(TransactionRequestDTO trade, SettlementResultDTO result);
 
 	// 환불
-	void p_cancel_order_and_refund(RefundRequestDTO refundDTO);
+	void callCancelOrderAndRefund(RefundRequestDTO refundDTO);
 
 	// 체결 내역 벌크 인서트
     void bulkInsertTransactionHists(@Param("list") List<TransactionHistDTO> list);

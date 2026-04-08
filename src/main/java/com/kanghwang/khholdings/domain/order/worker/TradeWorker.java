@@ -142,9 +142,9 @@ public class TradeWorker implements CommandLineRunner {
             // 이부분도 하나의 트랜잭션으로 묶어야 함
             // 1. [DB] 정산 후 생성된 OUTPUT을 SettlementResultDTO에 담음
             SettlementResultDTO result = new SettlementResultDTO();
-            orderRepository.p_process_transaction_settlement(trade, result);
+            orderRepository.callUpdateWalletAndHolding(trade, result);
 
-            // 2. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
+            // 3. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
             enqueueTransactionLogs(trade, result);
 
             log.info("[TradeWorker] 체결 정산 완료: TradeID {}", trade.getTradeId());
@@ -162,26 +162,23 @@ public class TradeWorker implements CommandLineRunner {
     private void enqueueTransactionLogs(TransactionRequestDTO t, SettlementResultDTO r) {
         BigDecimal execAmount = t.getTargetPrice().multiply(t.getExecutedVolume());
 
-        // 매수자 로그 (CASH OUT, TOKEN IN)
-        transactionBuffer.add(buildTrnasactionLog(
-                t.getTxId1(), t.getTokenId(), t.getTradeId(), t.getBuyOrderId(),
-                t.getBuyWalletId(), "CASH", "OUT",
-                execAmount, r.getBuyCashAfter(), r.getBuyRemToken(),
-                r.getBuyRemCash(), BigDecimal.ZERO, t.getCreatedAt()));
-
+        // 매수자 CASH OUT은 자산 정산 시 입력 완료
+        // 나머지 3건의 체결 내역을 저장
+        // 1. 매수자 TOKEN IN
         transactionBuffer.add(buildTrnasactionLog(
                 t.getTxId2(), t.getTokenId(), t.getTradeId(), t.getBuyOrderId(),
                 t.getBuyWalletId(), "TOKEN", "IN",
                 t.getExecutedVolume(), r.getBuyTokenAfter(), r.getBuyRemToken(),
                 r.getBuyRemCash(), t.getFeeRate().multiply(t.getExecutedVolume()), t.getCreatedAt()));
 
-        // 매도자 로그 (CASH IN, TOKEN OUT)
+        // 2. 매도자 CASH IN
         transactionBuffer.add(buildTrnasactionLog(
                 t.getTxId3(), t.getTokenId(), t.getTradeId(), t.getSellOrderId(),
                 t.getSellWalletId(), "CASH", "IN",
                 execAmount, r.getSellCashAfter(), r.getSellRemToken(),
                 r.getSellRemCash(),t.getFeeRate().multiply(execAmount), t.getCreatedAt()));
 
+        // 3. 매도자 TOKEN OUT
         transactionBuffer.add(buildTrnasactionLog(
                 t.getTxId4(), t.getTokenId(), t.getTradeId(), t.getSellOrderId(),
                 t.getSellWalletId(), "TOKEN", "OUT",
@@ -242,7 +239,7 @@ public class TradeWorker implements CommandLineRunner {
     // [환불/취소] DB 프로시저 호출
     private void handleRefund(RefundRequestDTO refundDTO) {
         try {
-            orderRepository.p_cancel_order_and_refund(refundDTO);
+            orderRepository.callCancelOrderAndRefund(refundDTO);
             log.info("[TradeWorker] 환불/취소 처리 완료: OrderID {}", refundDTO.getOrderId());
         } catch (Exception e) {
             log.error("[TradeWorker] 환불/취소 처리 실패: {}", e.getMessage());
