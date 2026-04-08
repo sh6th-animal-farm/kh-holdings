@@ -85,7 +85,7 @@ public class OrderRedisService {
 		// 주문이 도착하기 전에 취소 요청이 먼저 온 경우 매칭 엔진에 진입 X
 		String cancelKey = redisKeyManager.getCancelKey(myOrderId);
 		if (Boolean.TRUE.equals(redissonClient.getBucket(cancelKey).isExists())) {
-			log.warn("이미 취소 요청된 주문입니다. (ID: {})", myOrderId);
+			log.warn("[EXIT] 이미 취소 요청된 주문입니다. (ID: {})", myOrderId);
 			redissonClient.getBucket(cancelKey).delete(); // 마킹 삭제
 			return;
 		}
@@ -93,7 +93,7 @@ public class OrderRedisService {
 		// 멱등성 체크
 		// 이미 처리 중이거나 처리된 주문인지 확인
 		if (infoMap.containsKey(myOrderId)) {
-			log.warn("이미 매칭 엔진에 존재하는 주문입니다. 중복 처리를 방지합니다. ID: {}", myOrderId);
+			log.warn("[EXIT] 이미 매칭 엔진에 존재하는 주문입니다. (ID: {})", myOrderId);
 			return;
 		}
 
@@ -126,7 +126,7 @@ public class OrderRedisService {
 			} else {
 				if (myOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0) {
 					// 2) 그 외(지정가, 시장가 매도) : 미체결 수량이 0보다 작거나 같으면 break
-					log.info("[EXIT] 전액 체결로 매칭을 종료합니다.");
+					log.info("[EXIT] 전량 체결로 매칭을 종료합니다.");
 					break;
 				}
 			}
@@ -175,7 +175,9 @@ public class OrderRedisService {
 			// 주문 상세에서 상대방의 주문 정보를 가져옴
 			OrderRequestDTO targetOrderDTO = infoMap.get(targetOrderId);
 			if (targetOrderDTO == null) {
-				// 주문 상세에 상대방의 주문 정보가 없으면 해당 주문 제거 후, 다음 상대방 찾기 (continue)
+				// 주문 상세에 상대방의 주문 정보가 없으면 해당 주문 제거 및 미체결 수량 해제 후, 다음 상대방 찾기 (continue)
+				log.error("[CRITICAL] 주문이 호가창에는 존재하나 상세정보가 없습니다. (ID: {})", targetOrderId);
+				// releaseOrderQty(targetOrderDTO.getWalletId(), targetOrderDTO.getTokenId(), targetOrderDTO.getOrderVolume(), counterSide);
 				removeOrder(myOrderDTO.getTokenId(), counterSide, targetOrderId);
 				continue;
 			}
@@ -253,8 +255,8 @@ public class OrderRedisService {
 			// (3) 토큰 실시간 리스트 제작, 캔들 생성
 			marketDataService.processMarketUpdate(transactionDTO);
 
-			log.info("체결: Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
-			log.info("Worker에게 나머지 작업 전달: TradeID {}", tradeId);
+			log.info("[체결] Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
+			log.info("[정산 예약] TradeID {}", tradeId);
 
 			// [Step 4] 자산 정산 (미체결 수량 및 금액 갱신)
 			// 1) 나
@@ -286,8 +288,9 @@ public class OrderRedisService {
 			updateAggrOrderBook(tokenId, counterSide, targetPrice, executedVolume.negate());
 
 			if (targetOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0) {
-				// 1) 0보다 작거나 같으면, 해당 주문을 호가창에서 제거 (매칭 X)
-				log.info("주문 전량 체결 완료: OrderId {}", targetOrderId);
+				// 1) 0보다 작거나 같으면, 해당 주문의 미체결 수량을 해제하고 호가창에서 제거 (매칭 X)
+				log.info("[전체 체결] OrderId {}", targetOrderId);
+				releaseOrderQty(targetOrderDTO.getWalletId(), targetOrderDTO.getTokenId(), targetOrderDTO.getOrderVolume(), counterSide);
 				removeOrder(myOrderDTO.getTokenId(), counterSide, targetOrderId);
 			} else {
 				// 2) 0보다 크면, 주문 상세 업데이트
@@ -324,11 +327,12 @@ public class OrderRedisService {
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
 				redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
-				log.info("지정가 매수 차액 환불: 주문ID {}, 환불금액 {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash());
+				log.info("[지정가 매수 - 차액 환불] 주문ID {}, 환불금액 {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash());
 			}
 
-			// 체결 완료 시, 호가창과 상세 정보에서 제거
-			log.info("주문 전량 체결 완료: OrderId {}", myOrderDTO.getOrderId());
+			// 체결 완료 시 미체결 수량 해제 및 상세 정보에서 제거
+			log.info("[전체 체결] OrderId {}", myOrderDTO.getOrderId());
+			releaseOrderQty(myOrderDTO.getWalletId(), myOrderDTO.getTokenId(), myOrderDTO.getOrderVolume(), mySide);
 			removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
 		} else {
 			// 부분 체결 시,
@@ -339,11 +343,12 @@ public class OrderRedisService {
 				redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 					.add(StreamAddArgs.entry("data", refundRequestDTO));
 
-				log.info("시장가 주문 매칭 종료로 잔량 환불: OrderId {}", myOrderDTO.getOrderId());
+				log.info("[시장가 주문 - 잔량 환불] OrderId {}", myOrderDTO.getOrderId());
+				releaseOrderQty(myOrderDTO.getWalletId(), myOrderDTO.getTokenId(), myOrderDTO.getOrderVolume(), mySide);
 				removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
 			} else {
 				// 2) 지정가 주문은 이미 [Step 5]에서 업데이트
-				log.info("지정가 주문 잔량 대기: OrderId {}, RemainingToken {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingToken());
+				log.info("[지정가 주문 - 잔량 대기] OrderId {}, RemainingToken {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingToken());
 			}
 		}
 	}
@@ -385,6 +390,19 @@ public class OrderRedisService {
 		redissonClient.getTopic(orderbookAggrKey).publish(orderbookDTO);
 	}
 
+	// 미체결 수량 차감
+	private void releaseOrderQty(Long walletId, Long tokenId, BigDecimal volume, OrderSide side) {
+		String key = redisKeyManager.getPersonalOrderBookKey(walletId, side);
+		RMap<Long, BigDecimal> myOrderMap = redissonClient.getMap(key);
+
+		myOrderMap.compute(tokenId, (k, v) -> {
+			if (v == null) return null;
+			BigDecimal result = v.subtract(volume);
+			return (result.compareTo(BigDecimal.ZERO) <= 0) ? null : result;
+		});
+		log.info("[미체결 수량 해제] Wallet: {}, Token: {}, Side: {}, Volume: {}", walletId, tokenId, side, volume);
+	}
+
 	// 호가창 및 주문 상세에서 주문 제거
 	public void removeOrder(Long tokenId, OrderSide side, Long orderId) {
 		String bookKey = redisKeyManager.getOrderBookKey(tokenId, side);
@@ -420,7 +438,7 @@ public class OrderRedisService {
 			String cancelKey = redisKeyManager.getCancelKey(orderId);
 			redissonClient.getBucket(cancelKey).set("CANCELLED", 15, TimeUnit.MINUTES); // 유효시간 15분
 
-			log.info("매칭 엔진에 주문이 존재하지 않아 취소 마킹을 생성했습니다. (ID: {})", orderId);
+			log.info("[EXIT] 매칭 엔진에 주문이 존재하지 않아 취소 마킹을 생성했습니다. (ID: {})", orderId);
 
 			// DB 정보를 바탕으로 환불 스트림 발행
 			RefundRequestDTO refundRequestDTO = new RefundRequestDTO(
@@ -433,11 +451,12 @@ public class OrderRedisService {
 			redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 				.add(StreamAddArgs.entry("data", refundRequestDTO));
 
-			log.info("Redis에 주문 정보가 없어 DB를 바탕으로 환불 스트림 발행 완료 (ID: {})", orderId);
+			log.info("[EXIT] Redis에 주문 정보가 없어 DB를 바탕으로 환불 스트림 발행했습니다. (ID: {})", orderId);
 			return;
 		}
 
-		// 2. Redis 작업 (호가창 및 주문 상세에서 제거)
+		// 2. Redis 작업 (미체결 수량 해제 및 호가창, 상세 정보에서 제거)
+		releaseOrderQty(orderInfo.getWalletId(), orderInfo.getTokenId(), orderInfo.getOrderVolume(), orderInfo.getOrderSide());
 		removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
 		updateAggrOrderBook(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderInfo.getOrderPrice(), orderInfo.getRemainingToken().negate());
 
@@ -452,6 +471,6 @@ public class OrderRedisService {
 		redissonClient.getStream(redisKeyManager.getTradeStreamKey())
 			.add(StreamAddArgs.entry("data", refundRequestDTO));
 
-		log.info("TradeWorker에 주문 취소 요청: OrderId {}", orderId);
+		log.info("[주문 취소 예약] OrderId {}", orderId);
 	}
 }

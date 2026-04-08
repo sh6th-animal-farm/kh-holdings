@@ -65,10 +65,13 @@ public class TradeWorker implements CommandLineRunner {
         this.isRunning = false;
         log.info("[TradeWorker] 종료 신호를 받았습니다. 현재 처리중인 작업을 마치고 종료합니다.");
         try {
-            // 워커 스레드가 latch.countDown()을 호출할 때까지 최대 5초간 대기
+            // 1. 워커 스레드가 latch.countDown()을 호출할 때까지 최대 5초간 대기
             if (!shutdownLatch.await(5, TimeUnit.SECONDS)) {
                 log.warn("[TradeWorker] 워커가 5초 내에 종료되지 않아 강제 진행합니다.");
             }
+
+            // 2. 큐에 남아있는 모든 잔여 데이터를 DB에 강제 저장
+            forceFlushAll();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -87,33 +90,36 @@ public class TradeWorker implements CommandLineRunner {
                 Map<StreamMessageId, Map<String, Object>> messages = stream.read(
                         StreamReadArgs.greaterThan(lastId).count(10).timeout(Duration.ofSeconds(1)));
 
-                // 데이터가 없으면 건너뛰기
-                if (messages == null || messages.isEmpty()) {
-                    continue;
+                // 데이터가 없는데 종료 신호가 왔다면 종료
+                if ((messages == null || messages.isEmpty()) && !isRunning) {
+                    break;
                 }
 
-                for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
-                    StreamMessageId currentId = entry.getKey(); // 현재 처리 중인 메시지의 ID
-                    Object data = entry.getValue().get("data");
+                // 데이터가 있다면 종료 신호와 상관없이 처리
+                if (messages != null) {
+                    for (Map.Entry<StreamMessageId, Map<String, Object>> entry : messages.entrySet()) {
+                        StreamMessageId currentId = entry.getKey(); // 현재 처리 중인 메시지의 ID
+                        Object data = entry.getValue().get("data");
 
-                    try {
-                        // [1] 데이터 처리 로직
-                        if (data instanceof TransactionRequestDTO transactionDTO) {
-                            // 1. 체결 정산 처리
-                            handleTransaction(transactionDTO);
-                        } else if (data instanceof RefundRequestDTO refundDTO) {
-                            // 2. 취소 및 환불 처리
-                            handleRefund(refundDTO);
+                        try {
+                            // [1] 데이터 처리 로직
+                            if (data instanceof TransactionRequestDTO transactionDTO) {
+                                // 1. 체결 정산 처리
+                                handleTransaction(transactionDTO);
+                            } else if (data instanceof RefundRequestDTO refundDTO) {
+                                // 2. 취소 및 환불 처리
+                                handleRefund(refundDTO);
+                            }
+
+                            // [2] 처리가 성공하면 즉시 해당 메시지 삭제
+                            stream.remove(currentId);
+
+                            // [3] 다음 읽기 지점을 현재 메시지 이후로 업데이트
+                            lastId = currentId;
+
+                        } catch (Exception e) {
+                            log.error("[TradeWorker] 정산 처리 중 오류 발생: ", e);
                         }
-
-                        // [2] 처리가 성공하면 즉시 해당 메시지 삭제
-                        stream.remove(currentId);
-
-                        // [3] 다음 읽기 지점을 현재 메시지 이후로 업데이트
-                        lastId = currentId;
-
-                    } catch (Exception e) {
-                        log.error("[TradeWorker] 정산 처리 중 오류 발생: ", e);
                     }
                 }
             } catch (Exception e) {
@@ -195,24 +201,41 @@ public class TradeWorker implements CommandLineRunner {
                 .hashValue(txId + "_" + tradeId).createdAt(time).build();
     }
 
-    // [DB] 1초마다 혹은 버퍼가 차면 DB에 한 번에 저장
+    // 1초마다 혹은 버퍼 비우기
     @Scheduled(fixedDelay = 1000)
-    public void periodFlush() {
-
-        if (transactionBuffer.isEmpty()) {
-            return;
+    private void periodFlush() {
+        if (!transactionBuffer.isEmpty()) {
+            flushBuffer();
         }
+    }
 
+    // 워커 종료 전 버퍼에 남은 데이터를 DB에 저장
+    private void forceFlushAll () {
+        log.info("[TradeWorker] 워커 종료 전 잔여 데이터 Flush 시작");
+        while (!transactionBuffer.isEmpty()) {
+            flushBuffer();
+        }
+        log.info("[TradeWorker] 모든 잔여 데이터 Flush 완료");
+    }
+
+    // 최대 1000건의 내역을 DB에 한 번에 저장
+    private void flushBuffer() {
         List<TransactionHistDTO> transactionToSave = new ArrayList<>();
         while (!transactionBuffer.isEmpty() && transactionToSave.size() < 1000) {
             // 버퍼에서 처리할 체결 내역 로그를 하나씩 꺼내옴 (최대 1000개)
-            transactionToSave.add(transactionBuffer.poll());
+            TransactionHistDTO data = transactionBuffer.poll();
+            if (data != null) transactionToSave.add(data);
         }
 
         if (!transactionToSave.isEmpty()) {
-            // 처리할 체결 내역들을 한 번에 처리
-            orderRepository.bulkInsertTransactionHists(transactionToSave);
-            log.info("[DB] {}건의 체결 내역 저장 완료", transactionToSave.size());
+            try {
+                // 처리할 체결 내역들을 한 번에 처리
+                orderRepository.bulkInsertTransactionHists(transactionToSave);
+                log.info("[TradeWorker] {}건의 체결 내역 DB에 저장 완료", transactionToSave.size());
+            } catch (Exception e) {
+                transactionBuffer.addAll(transactionToSave);
+                log.error("[TradeWorker] 체결 내역 저장 중 오류가 발생하여 데이터를 재삽입: ", e);
+            }
         }
     }
 

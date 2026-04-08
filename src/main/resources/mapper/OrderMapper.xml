@@ -91,6 +91,7 @@
             #{h.remainingPrice}, #{h.fee}, #{h.hashValue}, #{h.createdAt}
             )
         </foreach>
+        ON CONFLICT (transaction_id) DO NOTHING  -- 중복 방지
     </insert>
 
     <!-- 봉 데이터 벌크 인서트 -->
