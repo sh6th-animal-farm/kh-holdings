@@ -40,10 +40,11 @@
     </update>
 
     <!-- 정산 전용 프로시저 호출 (OUT 파라미터 매핑) -->
-    <update id="p_process_transaction_settlement" statementType="CALLABLE">
-        CALL p_process_transaction_settlement(
+    <update id="callUpdateWalletAndHolding" statementType="CALLABLE">
+        CALL p_update_wallet_and_holding(
             #{trade.tokenId},
             #{trade.tradeId},
+            #{trade.txId1},
             #{trade.buyOrderId},
             #{trade.sellOrderId},
             #{trade.targetPrice},
@@ -62,7 +63,7 @@
     </update>
 
     <!-- 환불 프로시저 -->
-    <update id="p_cancel_order_and_refund" parameterType="RefundRequestDTO" statementType="CALLABLE">
+    <update id="callCancelOrderAndRefund" parameterType="RefundRequestDTO" statementType="CALLABLE">
         CALL p_cancel_order_and_refund(
             #{txId},
             #{orderId},
@@ -74,11 +75,11 @@
     <!-- 체결 내역 벌크 인서트 -->
     <insert id="bulkInsertTransactionHists">
         INSERT INTO transaction_hists (
-        transaction_id, token_id, trade_id,
-        order_id, wallet_id, transaction_type,
-        asset_type, direction, amount, balance_after,
-        remaining_volume, remaining_price, fee,
-        hash_value, created_at
+            transaction_id, token_id, trade_id,
+            order_id, wallet_id, transaction_type,
+            asset_type, direction, amount, balance_after,
+            remaining_volume, remaining_price, fee,
+            hash_value, created_at
         ) VALUES
         <foreach collection="list" item="h" separator=",">
             (
