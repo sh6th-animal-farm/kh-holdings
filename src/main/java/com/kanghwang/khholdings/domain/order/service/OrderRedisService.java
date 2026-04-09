@@ -12,13 +12,19 @@ import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.market.service.MarketDataService;
+import com.kanghwang.khholdings.domain.market.service.MarketService;
+import com.kanghwang.khholdings.domain.my.dto.WalletUpdateDTO;
 import com.kanghwang.khholdings.domain.order.dto.CancelRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.HoldingShortDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderInfoDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.TokenShortDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
@@ -36,11 +42,13 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class OrderRedisService {
 
+	private final ObjectMapper objectMapper;
 	private final OrderRepository orderRepository;
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
 	private final RedissonClient redissonClient;
 	private final RedisKeyManager redisKeyManager;
 	private final MarketDataService marketDataService;
+	private final MarketService marketService;
 	private static final BigDecimal F_RATE = new BigDecimal("0.0006"); // 수수료 관리
 
 	public void processOrder(OrderRequestDTO myOrderDTO) {
@@ -254,6 +262,14 @@ public class OrderRedisService {
 
 			// (3) 토큰 실시간 리스트 제작, 캔들 생성
 			marketDataService.processMarketUpdate(transactionDTO);
+
+			// (4) 시장가 업데이트
+			redissonClient.getMap(redisKeyManager.getMarketPriceKey())
+				.put(String.valueOf(tokenId), targetPrice);
+
+			// (5) 매수자/매도자 각각의 자산 및 보유 토큰 정보 업데이트
+			updateWalletInfo(buyWalletId, tokenId, targetPrice, executedVolume, OrderSide.BUY);
+			updateWalletInfo(sellWalletId, tokenId, targetPrice, executedVolume, OrderSide.SELL);
 
 			log.info("[체결] Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
 			log.info("[정산 예약] TradeID {}", tradeId);
@@ -472,5 +488,87 @@ public class OrderRedisService {
 			.add(StreamAddArgs.entry("data", refundRequestDTO));
 
 		log.info("[주문 취소 예약] OrderId {}", orderId);
+	}
+
+	// 사용자별 자산 업데이트
+	private void updateWalletInfo(Long walletId, Long tokenId, BigDecimal price, BigDecimal volume, OrderSide side) {
+		// 1. 키 매니저를 통한 Redis Key 생성
+		String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
+		String holdingKey = redisKeyManager.getPersonalHoldingsInfoKey(walletId);
+		String marketPriceKey = redisKeyManager.getMarketPriceKey();
+
+		// 2. 현재 시장가 업데이트
+		redissonClient.getMap(marketPriceKey).put(String.valueOf(tokenId), price);
+
+		// 3. 자산 요약 정보 업데이트 (예수금, 총 매입금액)
+		RMap<String, BigDecimal> walletMap = redissonClient.getMap(walletKey);
+		BigDecimal tradeAmount = price.multiply(volume);
+
+		// 예수금, 총 매입금액 : 매수 시 cash -, purchased + / 매도 시 cash +, purchased -
+		BigDecimal finalCashBalance = walletMap.addAndGet("cash_balance",
+			(side == OrderSide.BUY) ? tradeAmount.negate() : tradeAmount);
+		BigDecimal finalTotalPurchasedValue = walletMap.addAndGet("total_purchased_value",
+			(side == OrderSide.BUY) ? tradeAmount : tradeAmount.negate());
+
+		// 4. 보유 토큰 상세 업데이트
+		TokenShortDTO tokenInfo = marketService.selectTokenShortInfo(tokenId);
+		HoldingShortDTO holdingInfo = updateHoldingDetail(holdingKey, tokenId, price, volume, side, tokenInfo);
+
+		// 5. 실시간 토픽 발행 (Pub/Sub)
+		WalletUpdateDTO newWalletInfo = new WalletUpdateDTO(
+			walletId, tokenId, tokenInfo.getTokenName(), tokenInfo.getTickerSymbol(),
+			finalCashBalance, finalTotalPurchasedValue,
+			holdingInfo.getQuantity(), holdingInfo.getPurchasedValue()
+		);
+
+		redissonClient.getTopic("topic:wallet:" + walletId).publish(newWalletInfo);
+	}
+
+	// 사용자별 보유 토큰 업데이트
+	private HoldingShortDTO updateHoldingDetail(String holdingKey, Long tokenId, BigDecimal price, BigDecimal volume, OrderSide side, TokenShortDTO tokenInfo) {
+		RMap<String, String> holdingMap = redissonClient.getMap(holdingKey);
+		String holdingInfoJson = holdingMap.get(String.valueOf(tokenId));
+		HoldingShortDTO holdingInfo = null; // 기존 보유 토큰 정보
+
+		try {
+			holdingInfo = (holdingInfoJson == null) ?
+				new HoldingShortDTO(tokenInfo.getTokenName(), tokenInfo.getTickerSymbol(), BigDecimal.ZERO, BigDecimal.ZERO) :
+				objectMapper.readValue(holdingInfoJson, HoldingShortDTO.class);
+		} catch (JsonProcessingException e) {
+			throw new RuntimeException("HoldingInfo 파싱 실패", e);
+		}
+
+		BigDecimal newQty;
+		BigDecimal newPurchasedVal;
+		BigDecimal tradeAmount = price.multiply(volume);
+
+		if (side == OrderSide.BUY) {
+			newQty = holdingInfo.getQuantity().add(volume);
+			newPurchasedVal = holdingInfo.getPurchasedValue().add(tradeAmount);
+		} else {
+			// 매도 시: 기존 평단가 비율만큼 매입금액 차감
+			BigDecimal avgPrice = holdingInfo.getQuantity().compareTo(BigDecimal.ZERO) > 0 ?
+				holdingInfo.getPurchasedValue().divide(holdingInfo.getQuantity(), 8, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+			newQty = holdingInfo.getQuantity().subtract(volume);
+			newPurchasedVal = holdingInfo.getPurchasedValue().subtract(avgPrice.multiply(volume));
+		}
+
+		// 업데이트된 보유 토큰 정보
+		HoldingShortDTO newHoldingInfo = new HoldingShortDTO(tokenInfo.getTokenName(), tokenInfo.getTickerSymbol(), newQty, newPurchasedVal);
+
+		if (newQty.compareTo(BigDecimal.ZERO) <= 0) {
+			holdingMap.remove(String.valueOf(tokenId));
+		} else {
+			String newHoldingInfoJson = null;
+			try {
+				newHoldingInfoJson = objectMapper.writeValueAsString(newHoldingInfo);
+			} catch (JsonProcessingException e) {
+				log.error("JSON 생성 에러: {}", e.getMessage());
+				throw new RuntimeException("JSON 변환 실패", e);
+			}
+			holdingMap.put(String.valueOf(tokenId), newHoldingInfoJson);
+		}
+		return newHoldingInfo;
 	}
 }

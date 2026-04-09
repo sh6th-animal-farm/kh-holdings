@@ -27,6 +27,7 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.order.dto.TokenShortDTO;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
@@ -322,5 +323,10 @@ public class MarketService {
         }
 
         return token;
+    }
+
+    // 토큰 정보 조회
+    public TokenShortDTO selectTokenShortInfo(Long tokenId) {
+        return marketRepository.selectTokenShortInfo(tokenId);
     }
 }

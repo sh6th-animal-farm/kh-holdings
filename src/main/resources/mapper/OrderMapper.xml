@@ -127,4 +127,13 @@
         FROM orders
         WHERE order_id = #{orderId}
     </select>
+
+    <select id="selectTokenShortInfo" resultType="TokenShortDTO">
+        SELECT
+            token_id,
+            token_name,
+            ticker_symbol
+        FROM tokens
+        WHERE token_id = #{token_id}
+    </select>
 </mapper>

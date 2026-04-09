@@ -76,4 +76,19 @@ public class RedisKeyManager {
     public String getPersonalOrderBookKey(Long walletId, OrderSide side) {
         return getPrefix() + "orderbook:" + walletId + ":" + side.name().toLowerCase();
     }
+
+    // 13. 사용자별 자산 정보 (HASH)
+    public String getPersonalWalletInfoKey(Long walletId) {
+        return getPrefix() + "wallet:" + walletId;
+    }
+
+    // 14. 사용자별 보유 토큰 정보 (HASH)
+    public String getPersonalHoldingsInfoKey(Long walletId) {
+        return getPrefix() + "holdings:" + walletId;
+    }
+
+    // 15. 현재가 (HASH)
+    public String getMarketPriceKey() {
+        return getPrefix() + "market:price";
+    }
 }

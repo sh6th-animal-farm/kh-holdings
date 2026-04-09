@@ -10,6 +10,7 @@ import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
+import com.kanghwang.khholdings.domain.order.dto.TokenShortDTO;
 
 @Mapper
 public interface MarketRepository {
@@ -41,6 +42,8 @@ public interface MarketRepository {
 	// 토큰 OHLCV 조회
 	TokenListDTO selectTokenOhlcv(Long tokenId);
 
+	// 토큰 정보 조회
+	TokenShortDTO selectTokenShortInfo(Long tokenId);
 
 	// 바이낸스에서 캔들데이터 다운로드
 	void upsertCandles(List<CandleDTO> list);

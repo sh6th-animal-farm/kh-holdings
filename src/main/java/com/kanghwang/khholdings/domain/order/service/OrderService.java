@@ -13,7 +13,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kanghwang.khholdings.domain.order.dto.CancelRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
-import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.domain.order.repository.OutboxRepository;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.domain.order.type.OrderType;
@@ -101,27 +100,27 @@ public class OrderService {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					// PENDING인 경우에만 PROCESSING으로 변경
-					// -> 리턴값이 1이면 내가 선점, 0이면 찰나의 순간에 스케줄러가 가져간 것
-					int updated = outboxRepository.updateStatusIfPending(orderDTO.getOrderId(), "ORDER", "PROCESSING");
+				// PENDING인 경우에만 PROCESSING으로 변경
+				// -> 리턴값이 1이면 내가 선점, 0이면 찰나의 순간에 스케줄러가 가져간 것
+				int updated = outboxRepository.updateStatusIfPending(orderDTO.getOrderId(), "ORDER", "PROCESSING");
 
-					if (updated == 1) {
-						try{
-							// Redis 전송
-							processRedisWithStatus(orderDTO, "ORDER");
+				if (updated == 1) {
+					try{
+						// Redis 전송
+						processRedisWithStatus(orderDTO, "ORDER");
 
-							// 성공 시 처리 완료 (PROCESSED)
-							updateOutboxStatus(orderId, "ORDER", "PROCESSED", 0);
-							log.info("[주문 - 실시간 처리 성공] ID: {}, count: 0", orderId);
-						} catch (Exception e) {
-							// 실패 시 대기 (PENDING)
-							updateOutboxStatus(orderId, "ORDER", "PENDING", 0);
-							log.error("[주문 - 실시간 처리 실패] ID: {}, count: 0", orderId);
-							log.error("error: {}", e.getMessage());
-						}
-					} else {
-						log.info("스케줄러가 이미 처리하고 있습니다. (ID: {}, type: ORDER)", orderDTO.getOrderId());
+						// 성공 시 처리 완료 (PROCESSED)
+						updateOutboxStatus(orderId, "ORDER", "PROCESSED", 0);
+						log.info("[주문 - 실시간 처리 성공] ID: {}, count: 0", orderId);
+					} catch (Exception e) {
+						// 실패 시 대기 (PENDING)
+						updateOutboxStatus(orderId, "ORDER", "PENDING", 0);
+						log.error("[주문 - 실시간 처리 실패] ID: {}, count: 0", orderId);
+						log.error("error: {}", e.getMessage());
 					}
+				} else {
+					log.info("스케줄러가 이미 처리하고 있습니다. (ID: {}, type: ORDER)", orderDTO.getOrderId());
+				}
 				}
 			});
 		} catch (Exception e) {
