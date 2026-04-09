@@ -55,6 +55,7 @@
         ORDER BY token_id, candle_time DESC
             )
         SELECT
+            t.token_id             AS tokenId,
             t.token_name           AS tokenName,
             t.ticker_symbol        AS tickerSymbol,
             h.token_balance        AS tokenBalance,
@@ -75,8 +76,11 @@
         WHERE h.wallet_id = #{walletId}
         AND t.deleted_at IS null
         ORDER BY t.token_name
+
+        <if test="page != null and page > 0">
             LIMIT 10
-        OFFSET (#{page} - 1) * 10
+            OFFSET (#{page} - 1) * 10
+        </if>
     </select>
         
     <select id="selectMyTransactionHist" resultType="MyTransactionHistDTO">

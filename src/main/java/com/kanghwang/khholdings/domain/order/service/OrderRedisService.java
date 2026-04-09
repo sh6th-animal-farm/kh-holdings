@@ -10,6 +10,7 @@ import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -501,7 +502,7 @@ public class OrderRedisService {
 		redissonClient.getMap(marketPriceKey).put(String.valueOf(tokenId), price);
 
 		// 3. 자산 요약 정보 업데이트 (예수금, 총 매입금액)
-		RMap<String, BigDecimal> walletMap = redissonClient.getMap(walletKey);
+		RMap<String, BigDecimal> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
 		BigDecimal tradeAmount = price.multiply(volume);
 
 		// 예수금, 총 매입금액 : 매수 시 cash -, purchased + / 매도 시 cash +, purchased -
@@ -526,7 +527,7 @@ public class OrderRedisService {
 
 	// 사용자별 보유 토큰 업데이트
 	private HoldingShortDTO updateHoldingDetail(String holdingKey, Long tokenId, BigDecimal price, BigDecimal volume, OrderSide side, TokenShortDTO tokenInfo) {
-		RMap<String, String> holdingMap = redissonClient.getMap(holdingKey);
+		RMap<String, String> holdingMap = redissonClient.getMap(holdingKey, StringCodec.INSTANCE);
 		String holdingInfoJson = holdingMap.get(String.valueOf(tokenId));
 		HoldingShortDTO holdingInfo = null; // 기존 보유 토큰 정보
 

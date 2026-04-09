@@ -2,7 +2,6 @@ package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 
-import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -48,6 +47,7 @@ public class OrderService {
 	// 매수/매도 주문
 	@Transactional
 	public void placeOrder(OrderRequestDTO orderDTO) {
+		/*
 		// 1. 반대 방향 주문이 있는지 확인 (ex. 매수가 있으면 매도 불가)
 		OrderSide mySide = orderDTO.getOrderSide();
 		OrderSide oppositeSide = mySide.equals(OrderSide.BUY) ? OrderSide.SELL : OrderSide.BUY;
@@ -72,57 +72,60 @@ public class OrderService {
 		myCurrentMap.compute(orderDTO.getTokenId(), (k, v) -> (v == null) ? volume : v.add(volume));
 
 		try {
+		 */
 
-			// 2. Snowflake ID를 사용하여 주문 번호 생성
-			Long orderId = snowflakeIdGenerator.nextId();
-			orderDTO.setOrderId(orderId);
+		// 2. Snowflake ID를 사용하여 주문 번호 생성
+		Long orderId = snowflakeIdGenerator.nextId();
+		orderDTO.setOrderId(orderId);
 
-			// 3. 미체결 금액 및 미체결 수량 초기화
-			// 1) 미체결 금액: 매수(BUY)는 총 주문 금액으로, 매도(SELL)은 0으로 초기화
-			if (orderDTO.getOrderSide() == OrderSide.BUY) {
-				orderDTO.setRemainingCash(orderDTO.getTotalPrice());
-			} else {
-				orderDTO.setRemainingCash(BigDecimal.ZERO);
-			}
+		// 3. 미체결 금액 및 미체결 수량 초기화
+		// 1) 미체결 금액: 매수(BUY)는 총 주문 금액으로, 매도(SELL)은 0으로 초기화
+		if (orderDTO.getOrderSide() == OrderSide.BUY) {
+			orderDTO.setRemainingCash(orderDTO.getTotalPrice());
+		} else {
+			orderDTO.setRemainingCash(BigDecimal.ZERO);
+		}
 
-			// 2) 미체결 수량: 시장가 매수(MARKET, BUY)는 0으로, 그 외는 총 주문 수량으로 초기화
-			if (orderDTO.getOrderType() == OrderType.MARKET && orderDTO.getOrderSide() == OrderSide.BUY) {
-				orderDTO.setRemainingToken(BigDecimal.ZERO);
-			} else {
-				orderDTO.setRemainingToken(orderDTO.getOrderVolume());
-			}
+		// 2) 미체결 수량: 시장가 매수(MARKET, BUY)는 0으로, 그 외는 총 주문 수량으로 초기화
+		if (orderDTO.getOrderType() == OrderType.MARKET && orderDTO.getOrderSide() == OrderSide.BUY) {
+			orderDTO.setRemainingToken(BigDecimal.ZERO);
+		} else {
+			orderDTO.setRemainingToken(orderDTO.getOrderVolume());
+		}
 
-			// 4. DB 주문 생성 + Outbox 저장
-			orderDBService.placeOrder(orderDTO);
-			insertOutbox(orderDTO, "ORDER"); // PENDING
+		// 4. DB 주문 생성 + Outbox 저장
+		orderDBService.placeOrder(orderDTO);
+		insertOutbox(orderDTO, "ORDER"); // PENDING
 
-			// 5. DB에서 주문 생성 후, Redis 매칭 엔진에 추가
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-				// PENDING인 경우에만 PROCESSING으로 변경
-				// -> 리턴값이 1이면 내가 선점, 0이면 찰나의 순간에 스케줄러가 가져간 것
-				int updated = outboxRepository.updateStatusIfPending(orderDTO.getOrderId(), "ORDER", "PROCESSING");
+		// 5. DB에서 주문 생성 후, Redis 매칭 엔진에 추가
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+			// PENDING인 경우에만 PROCESSING으로 변경
+			// -> 리턴값이 1이면 내가 선점, 0이면 찰나의 순간에 스케줄러가 가져간 것
+			int updated = outboxRepository.updateStatusIfPending(orderDTO.getOrderId(), "ORDER", "PROCESSING");
 
-				if (updated == 1) {
-					try{
-						// Redis 전송
-						processRedisWithStatus(orderDTO, "ORDER");
+			if (updated == 1) {
+				try{
+					// Redis 전송
+					processRedisWithStatus(orderDTO, "ORDER");
 
-						// 성공 시 처리 완료 (PROCESSED)
-						updateOutboxStatus(orderId, "ORDER", "PROCESSED", 0);
-						log.info("[주문 - 실시간 처리 성공] ID: {}, count: 0", orderId);
-					} catch (Exception e) {
-						// 실패 시 대기 (PENDING)
-						updateOutboxStatus(orderId, "ORDER", "PENDING", 0);
-						log.error("[주문 - 실시간 처리 실패] ID: {}, count: 0", orderId);
-						log.error("error: {}", e.getMessage());
-					}
-				} else {
-					log.info("스케줄러가 이미 처리하고 있습니다. (ID: {}, type: ORDER)", orderDTO.getOrderId());
+					// 성공 시 처리 완료 (PROCESSED)
+					updateOutboxStatus(orderId, "ORDER", "PROCESSED", 0);
+					log.info("[주문 - 실시간 처리 성공] ID: {}, count: 0", orderId);
+				} catch (Exception e) {
+					// 실패 시 대기 (PENDING)
+					updateOutboxStatus(orderId, "ORDER", "PENDING", 0);
+					log.error("[주문 - 실시간 처리 실패] ID: {}, count: 0", orderId);
+					log.error("error: {}", e.getMessage());
 				}
-				}
-			});
+			} else {
+				log.info("스케줄러가 이미 처리하고 있습니다. (ID: {}, type: ORDER)", orderDTO.getOrderId());
+			}
+			}
+		});
+
+		/*
 		} catch (Exception e) {
 			// DB 작업 실패 시 현재 방향 주문 정보에 더했던 수량 차감
 			myCurrentMap.compute(orderDTO.getTokenId(), (k, v) -> {
@@ -133,6 +136,7 @@ public class OrderService {
 			log.error("DB 주문 생성 실패로 인한 Redis 수량 롤백 완료");
 			throw e; // 예외를 다시 던져서 @Transactional 롤백 유도
 		}
+		*/
 	}
 
 	// 주문 취소

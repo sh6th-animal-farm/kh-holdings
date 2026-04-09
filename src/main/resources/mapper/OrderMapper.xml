@@ -82,7 +82,7 @@
             hash_value, created_at
         ) VALUES
         <foreach collection="list" item="h" separator=",">
-            (
+        (
             #{h.transactionId}, #{h.tokenId}, #{h.tradeId},
             #{h.orderId}, #{h.walletId},
             #{h.transactionType}::transaction_type_enum,
@@ -90,7 +90,7 @@
             #{h.direction}::direction_enum,
             #{h.amount}, #{h.balanceAfter}, #{h.remainingVolume},
             #{h.remainingPrice}, #{h.fee}, #{h.hashValue}, #{h.createdAt}
-            )
+        )
         </foreach>
         ON CONFLICT (transaction_id) DO NOTHING  -- 중복 방지
     </insert>
@@ -126,14 +126,5 @@
             total_price
         FROM orders
         WHERE order_id = #{orderId}
-    </select>
-
-    <select id="selectTokenShortInfo" resultType="TokenShortDTO">
-        SELECT
-            token_id,
-            token_name,
-            ticker_symbol
-        FROM tokens
-        WHERE token_id = #{token_id}
     </select>
 </mapper>

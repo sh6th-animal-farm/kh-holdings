@@ -147,11 +147,11 @@ public class TradeWorker implements CommandLineRunner {
             // 3. [비동기 기록] 거래 내역 로그 생성 및 버퍼 추가
             enqueueTransactionLogs(trade, result);
 
-            log.info("[TradeWorker] 체결 정산 완료: TradeID {}", trade.getTradeId());
+            log.info("[TradeWorker] 정산 완료: TradeID {}", trade.getTradeId());
 
         } catch (Exception e) {
 
-            log.error("[TradeWorker] 체결 및 정산 실패: TradeID {}", trade.getTradeId(), e);
+            log.error("[TradeWorker] 정산 실패: TradeID {}", trade.getTradeId(), e);
 
         }
     }
@@ -161,6 +161,7 @@ public class TradeWorker implements CommandLineRunner {
     // SettlementResultDTO 정산 후 잔액이 얼마가 되었는가?
     private void enqueueTransactionLogs(TransactionRequestDTO t, SettlementResultDTO r) {
         BigDecimal execAmount = t.getTargetPrice().multiply(t.getExecutedVolume());
+        System.out.println(r);
 
         // 매수자 CASH OUT은 자산 정산 시 입력 완료
         // 나머지 3건의 체결 내역을 저장
@@ -221,7 +222,9 @@ public class TradeWorker implements CommandLineRunner {
         while (!transactionBuffer.isEmpty() && transactionToSave.size() < 1000) {
             // 버퍼에서 처리할 체결 내역 로그를 하나씩 꺼내옴 (최대 1000개)
             TransactionHistDTO data = transactionBuffer.poll();
-            if (data != null) transactionToSave.add(data);
+            if (data != null) {
+                transactionToSave.add(data);
+            }
         }
 
         if (!transactionToSave.isEmpty()) {
@@ -230,8 +233,8 @@ public class TradeWorker implements CommandLineRunner {
                 orderRepository.bulkInsertTransactionHists(transactionToSave);
                 log.info("[TradeWorker] {}건의 체결 내역 DB에 저장 완료", transactionToSave.size());
             } catch (Exception e) {
-                transactionBuffer.addAll(transactionToSave);
-                log.error("[TradeWorker] 체결 내역 저장 중 오류가 발생하여 데이터를 재삽입: ", e);
+                // transactionBuffer.addAll(transactionToSave);
+                log.error("[TradeWorker] 체결 내역 저장 중 오류가 발생하여 데이터를 재삽입", e);
             }
         }
     }
