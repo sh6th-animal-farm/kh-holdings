@@ -63,7 +63,7 @@ public class MyService {
 			return null;
 		}
 
-		// 2. 리턴할 리스트에서 수량이 0인 것들을 필터링 (핵심!)
+		// 2. 리턴할 리스트에서 수량이 0인 것들을 필터링
 		List<HoldingDTO> filteredList = list.stream()
 			.filter(h -> h.getTokenBalance() != null && h.getTokenBalance().compareTo(BigDecimal.ZERO) > 0)
 			.toList();
@@ -122,12 +122,10 @@ public class MyService {
 			if (!"ENTERPRISE".equals(role)) role = "USER";
 			UserInfoDTO userInfo = new UserInfoDTO(userId, username, role, type);
 			myRepository.createUser(userInfo);
-			System.out.println("!!!계정 생성 완료");
 		}
 
 		// 3. 계좌 생성
 		myRepository.createAccount(userId);
-		System.out.println("!!!계좌 생성 완료");
 
 		// 4. 새로 생성된 계좌 조회 및 반환
 		return myRepository.selectAccount(userId);
