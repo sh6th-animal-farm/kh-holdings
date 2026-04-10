@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class HoldingDTO {
+	private Long tokenId; 					// 토큰 아이디
 	private String tokenName;				// 토큰명
 	private String tickerSymbol;			// 종목 코드
 	private BigDecimal tokenBalance;		// 보유 수량
