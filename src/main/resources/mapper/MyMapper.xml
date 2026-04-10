@@ -21,6 +21,7 @@
                 w.account_no,
                 w.available_balance,
                 w.cash_balance,
+                w.frozen_amount,
                 COALESCE(SUM(h.purchased_value), 0) AS total_purchased_value,
                 COALESCE(SUM(h.token_balance * ltq.closing_price), 0) AS total_market_value
             FROM wallets w
@@ -30,10 +31,12 @@
             GROUP BY w.wallet_id, w.bank_name, w.account_no, w.cash_balance
         )
         SELECT
+            wallet_id AS walletId,
             bank_name AS bankName,
             account_no AS accountNo,
             available_balance AS availableBalance,
             cash_balance AS cashBalance,
+            frozen_amount AS frozenAmount,
             total_purchased_value AS totalPurchasedValue,
             total_market_value AS totalMarketValue,
             (cash_balance + total_market_value) AS totalBalance,
@@ -202,8 +205,9 @@
     </insert>
 
     <insert id="createAccount" parameterType="long">
-        INSERT INTO wallets (user_id, account_no, cash_balance, bank_name)
+        INSERT INTO wallets (wallet_id, user_id, account_no, cash_balance, bank_name)
         VALUES (
+           #{userId},
            #{userId},
            'KH_' || LPAD(#{userId}::text, 6, '0'),
            5000000,

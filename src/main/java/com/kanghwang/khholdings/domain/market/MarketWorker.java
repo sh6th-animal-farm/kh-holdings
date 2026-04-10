@@ -10,6 +10,8 @@ import com.kanghwang.khholdings.domain.market.dto.CandleDTO;
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.my.dto.WalletUpdateDTO;
+import com.kanghwang.khholdings.domain.order.dto.LiveMarketPriceDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import jakarta.annotation.PostConstruct;
@@ -106,6 +108,23 @@ public class MarketWorker {
 			// 		+ ", 등락률: " + event.getChangeRate() + "%"
 			// 		+ ", 거래대금: " + event.getDailyTradeVolume()
 			// 		);
+		});
+
+		// [시장가]
+		RTopic marketPriceTopic = redissonClient.getTopic(redisKeyManager.getMarketPriceTopicKey());
+		marketPriceTopic.addListener(LiveMarketPriceDTO.class, (channel, event) -> {
+			messagingTemplate.convertAndSend("/topic/market/prices", event);
+			log.debug("[MarketWorker] 시장가 업데이트: 토큰 {}, 가격 {}", event.getTokenId(), event.getCurrentPrice());
+		});
+
+		// [전자 지갑]
+		RPatternTopic walletTopic = redissonClient.getPatternTopic(redisKeyManager.getWalletInfoTopicKey());
+		walletTopic.addListener(WalletUpdateDTO.class, (pattern, channel, event) -> {
+			String channelStr = channel.toString();
+			String walletId = channelStr.substring(channelStr.lastIndexOf(":") + 1);
+
+			messagingTemplate.convertAndSend("/topic/wallet/" + walletId, event);
+			log.info("[MarketWorker] 전자 지갑 업데이트: Wallet {}", walletId);
 		});
 	}
 }

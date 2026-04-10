@@ -2,7 +2,9 @@ package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
 
+import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -97,7 +99,17 @@ public class OrderService {
 		orderDBService.placeOrder(orderDTO);
 		insertOutbox(orderDTO, "ORDER"); // PENDING
 
-		// 5. DB에서 주문 생성 후, Redis 매칭 엔진에 추가
+		// 5. Redis 지갑 정보에 동결 금액 추가
+		String walletKey = redisKeyManager.getPersonalWalletInfoKey(orderDTO.getWalletId());
+		RMap<String, BigDecimal> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
+
+		if (orderDTO.getOrderSide() == OrderSide.BUY) {
+			// 매수: (주문가 * 수량) 만큼 현금 동결
+			BigDecimal freezeAmount = orderDTO.getOrderPrice().multiply(orderDTO.getOrderVolume());
+			walletMap.addAndGet("frozen_amount", freezeAmount);
+		}
+
+		// 6. DB에서 주문 생성 후, Redis 매칭 엔진에 추가
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCommit() {

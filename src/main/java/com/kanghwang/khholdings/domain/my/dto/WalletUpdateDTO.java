@@ -18,6 +18,7 @@ public class WalletUpdateDTO {
 	Long tokenId;
 	String tokenName;
 	String tickerSymbol;
+	BigDecimal frozenAmount;        // 동결 금액
 	BigDecimal cashBalance;         // 총 예수금
 	BigDecimal totalPurchasedValue; // 총 매입금액
 	BigDecimal tokenQty;            // 해당 토큰의 총 수량
