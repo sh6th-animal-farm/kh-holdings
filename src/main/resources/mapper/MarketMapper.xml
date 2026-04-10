@@ -278,4 +278,14 @@
             LEFT JOIN DailyStats ds ON t.token_id = ds.token_id
             WHERE t.token_id = #{tokenId}
     </select>
+
+    <!-- 토큰 정보 조회-->
+    <select id="selectTokenShortInfo" resultType="TokenShortDTO">
+        SELECT
+            token_id,
+            token_name,
+            ticker_symbol
+        FROM tokens
+        WHERE token_id = #{token_id}
+    </select>
 </mapper>

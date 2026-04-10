@@ -1,8 +1,12 @@
 package com.kanghwang.khholdings.domain.my.dto;
 
-import lombok.*;
-
 import java.math.BigDecimal;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @Setter
@@ -11,12 +15,12 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class WalletDTO {
 	private Long walletId;						// 지갑 번호
-	private Long userId;						// 사용자 번호
+	// private Long userId;						// 사용자 번호
 	private String accountNo;					// 계좌번호
 	private String bankName;					// 은행명
-	private BigDecimal availableBalance; 		// 예수금
+	private BigDecimal availableBalance; 		// 사용 가능 금액
 	private BigDecimal cashBalance;				// 예수금
-	private BigDecimal frozen_amount;			// 동결 금액
+	private BigDecimal frozenAmount;			// 동결 금액
 
 	private BigDecimal totalPurchasedValue;		// 매입 금액
 	private BigDecimal totalMarketValue;		// 평가 금액

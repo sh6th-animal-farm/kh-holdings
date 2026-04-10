@@ -2,7 +2,6 @@ package com.kanghwang.khholdings.domain.my;
 
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,12 +18,14 @@ import com.kanghwang.khholdings.domain.my.dto.WalletDTO;
 import com.kanghwang.khholdings.global.dto.ApiResponse;
 import com.kanghwang.khholdings.global.util.ApiResponseUtil;
 
+import lombok.RequiredArgsConstructor;
+
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/api/my")
 public class MyController {
 
-	@Autowired
-	private MyService myService;
+	private final MyService myService;
 
 	// 특정 계좌 및 지갑 조회
 	@GetMapping("/wallet/{walletId}")
@@ -43,7 +44,6 @@ public class MyController {
 		if (list.isEmpty()) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
-
 		return  ApiResponseUtil.ok("보유 토큰 조회에 성공했습니다.", list);
 	}
 
@@ -58,7 +58,6 @@ public class MyController {
 		if (list.isEmpty()) {
 			return ApiResponseUtil.ok("조회된 결과가 없습니다.");
 		}
-
 		return  ApiResponseUtil.ok("거래 내역 조회에 성공했습니다.", list);
 	}
 
