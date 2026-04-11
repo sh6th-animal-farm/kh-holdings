@@ -1,7 +1,9 @@
 package com.kanghwang.khholdings.domain.my;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.redisson.api.RMap;
@@ -19,7 +21,9 @@ import com.kanghwang.khholdings.domain.order.dto.HoldingShortDTO;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class MyService {
@@ -31,6 +35,7 @@ public class MyService {
 
 	// 특정 계좌 및 지갑 조회
 	public WalletDTO selectWalletById(Long walletId){
+		Long start = System.currentTimeMillis();
 		WalletDTO data =  myRepository.selectWalletById(walletId);
 
 		// Redis에 자산 정보가 없는 경우 DB에서 조회한 값으로 초기화
@@ -39,17 +44,21 @@ public class MyService {
 			RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
 
 			if (walletMap.isEmpty()) {
-				walletMap.put("cash_balance", data.getCashBalance().toPlainString());
-				walletMap.put("frozen_amount", data.getFrozenAmount().toPlainString());
-				walletMap.put("total_purchased_value", data.getTotalPurchasedValue().toPlainString());
+				Map<String, Object> initData = new HashMap<>();
+				initData.put("cash_balance", data.getCashBalance().toPlainString());
+				initData.put("frozen_amount", data.getFrozenAmount().toPlainString());
+				initData.put("total_purchased_value", data.getTotalPurchasedValue().toPlainString());
 
-				// 데이터가 들어온 시점에 TTL 설정 (1시간)
-				walletMap.expire(1, TimeUnit.HOURS);
+				walletMap.putAll(initData);                    // 한 번에 처리
+				walletMap.expire(1, TimeUnit.HOURS); // 데이터가 들어온 시점에 TTL 설정 (1시간)
 			}
 
 			// Redis에 데이터가 있다면 TTL 연장 (1시간)
 			walletMap.expire(1, TimeUnit.HOURS);
 		}
+
+		long end = System.currentTimeMillis();
+		// log.info("자산 조회까지 걸린 시간: {}ms", end - start);
 
 		return data;
 	}
@@ -57,6 +66,7 @@ public class MyService {
 	// 보유 토큰 조회
 	public List<HoldingDTO> selectTokenByWalletId(Long walletId, Integer page){
 		// 1. DB에서 리스트 조회
+		long start = System.currentTimeMillis();
 		List<HoldingDTO> list =  myRepository.selectTokenByWalletId(walletId, page); // 'page = 0'으로 전체 조회
 
 		if (list == null || list.isEmpty()) {
@@ -74,6 +84,8 @@ public class MyService {
 		RMap<String, String> holdingMap = redissonClient.getMap(holdingKey, StringCodec.INSTANCE);
 
 		if (holdingMap.isEmpty()&& !filteredList.isEmpty()) {
+			Map<String, String> batchData = new HashMap<>();
+
 			for (HoldingDTO h : filteredList) {
 				HoldingShortDTO dto = new HoldingShortDTO(
 					h.getTokenName(),
@@ -82,17 +94,20 @@ public class MyService {
 					h.getPurchasedValue()
 				);
 				try {
-					holdingMap.put(String.valueOf(h.getTokenId()), objectMapper.writeValueAsString(dto));
+					batchData.put(String.valueOf(h.getTokenId()), objectMapper.writeValueAsString(dto));
 				} catch (JsonProcessingException e) {
-					// log.error("초기 데이터 로딩 중 직렬화 실패", e);
+					log.error("초기 데이터 로딩 중 직렬화 실패", e);
 				}
 			}
 
-			// 데이터가 들어온 시점에 TTL 설정 (1시간)
-			holdingMap.expire(1, TimeUnit.HOURS);
+			holdingMap.putAll(batchData);                   // 한 번에 모든 데이터 저장
+			holdingMap.expire(1, TimeUnit.HOURS); // 데이터가 들어온 시점에 TTL 설정 (1시간)
 		} else if (!holdingMap.isEmpty()) {
 			holdingMap.expire(1, TimeUnit.HOURS);
 		}
+
+		long end = System.currentTimeMillis();
+		// log.info("보유 토큰 조회까지 걸린 시간: {}ms", end - start);
 
 		return filteredList;
 	}

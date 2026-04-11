@@ -274,8 +274,10 @@ public class OrderRedisService {
 			redissonClient.getTopic(redisKeyManager.getMarketPriceTopicKey()).publish(liveMarketPrice);
 
 			// (6) 매수자/매도자 각각의 자산 및 보유 토큰 정보 업데이트
-			updateWalletInfo(buyWalletId, tokenId, targetPrice, executedVolume, OrderSide.BUY);
-			updateWalletInfo(sellWalletId, tokenId, targetPrice, executedVolume, OrderSide.SELL);
+			// 매수자: 체결된 만큼 동결 해제, 예수금 변동 없음, 매입금액 증가
+			updateWalletInfo(buyWalletId, tokenId, targetPrice, executedVolume, executedAmount, OrderSide.BUY);
+			// 매도자: 동결 해제 없음, 예수금 증가(수수료 제외), 매입금액 감소
+			updateWalletInfo(sellWalletId, tokenId, targetPrice, executedVolume, BigDecimal.ZERO, OrderSide.SELL);
 
 			log.info("[체결] Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
 			log.info("[정산 예약] TradeID {}", tradeId);
@@ -415,7 +417,7 @@ public class OrderRedisService {
 		return result.getFrozenAmount();
 	}
 
-	// 지갑 정보 실시간 업데이트
+	// 지갑 정보 웹소켓 발행
 	private void publishWalletOnlyUpdate(Long walletId, Long tokenId, BigDecimal frozenAmount) {
 		String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
 		RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
@@ -586,25 +588,41 @@ public class OrderRedisService {
 		log.info("[주문 취소 예약] OrderId {}", orderId);
 	}
 
-	// 사용자별 자산 업데이트 (Redis)
-	private void updateWalletInfo(Long walletId, Long tokenId, BigDecimal price, BigDecimal volume, OrderSide side) {
-		// 1. 체결량 계산
-		BigDecimal tradeAmount = price.multiply(volume);
+	// 전자 지갑 업데이트 (Redis)
+	private void updateWalletInfo(Long walletId, Long tokenId, BigDecimal price, BigDecimal volume, BigDecimal executedAmount, OrderSide side) {
+		// 1. 증분(Delta) 계산
+		BigDecimal cashDelta = BigDecimal.ZERO;
+		BigDecimal frozenDelta = BigDecimal.ZERO;
+		BigDecimal purchasedDelta = BigDecimal.ZERO;
 
-		// 2. 증분(Delta) 계산
-		BigDecimal cashDelta = (side == OrderSide.BUY) ? tradeAmount.negate() : tradeAmount;        // 예수금: 매수 -, 매도 +
-		BigDecimal frozenDelta = (side == OrderSide.BUY) ? tradeAmount.negate() : BigDecimal.ZERO;  // 동결금액: 매수 -
-		BigDecimal purchasedDelta = (side == OrderSide.BUY) ? tradeAmount : tradeAmount.negate();   // 매입금액: 매수 +, 매도 -
+		if (side == OrderSide.BUY) {
+			// [매수자]
+			cashDelta = BigDecimal.ZERO;             // 예수금 : 변동 없음
+			frozenDelta = executedAmount.negate();   // 동결금액: 체결된 금액만큼 해제 (-)
+			purchasedDelta = executedAmount;         // 매입금액: 체결된 금액만큼 증가 (+)
+		} else {
+			// [매도자]
+			BigDecimal sellFee = executedAmount.multiply(F_RATE);
+			cashDelta = executedAmount.subtract(sellFee);   // 예수금: 체결 금액에서 수수료 제외하고 증가 (+)
+			frozenDelta = BigDecimal.ZERO;                  // 동결금액: 매도는 현금 동결 없음
+			purchasedDelta = executedAmount.negate();       // 매입금액: 체결된 금액만큼 감소 (-)
+		}
 
-		// 3. 자산 정보 업데이트
+		// 2. 자산 정보 업데이트
 		WalletUpdateDTO walletResult = safeUpdateWallet(walletId, tokenId, cashDelta, frozenDelta, purchasedDelta);
 
-		// 4. 보유 토큰 업데이트
+		// 3. 보유 토큰 업데이트
 		TokenShortDTO tokenInfo = marketService.selectTokenShortInfo(tokenId);
 		String holdingKey = redisKeyManager.getPersonalHoldingsInfoKey(walletId);
-		HoldingShortDTO holdingInfo = updateHoldingDetail(holdingKey, tokenId, price, volume, side, tokenInfo);
 
-		// 5. 실시간 토픽 발행 (Pub/Sub)
+		BigDecimal actualVolume = volume;
+		if (side == OrderSide.BUY) {
+			BigDecimal buyFeeToken = volume.multiply(F_RATE);
+			actualVolume = volume.subtract(buyFeeToken);  // 매수자는 수수료를 제외
+		}
+		HoldingShortDTO holdingInfo = updateHoldingDetail(holdingKey, tokenId, price, actualVolume, side, tokenInfo);
+
+		// 4. 실시간 토픽 발행 (Pub/Sub)
 		walletResult.setTokenQty(holdingInfo.getQuantity());
 		walletResult.setTotalPurchasedValue(holdingInfo.getPurchasedValue());
 
@@ -630,8 +648,8 @@ public class OrderRedisService {
 					BigDecimal currentPurchased = getSafeBigDecimal(walletMap.get("total_purchased_value"));
 
 					// 연산
-					BigDecimal finalCash = currentCash.add(cashDelta);
-					BigDecimal finalFrozen = currentFrozen.add(frozenDelta);
+					BigDecimal finalCash = currentCash.add(cashDelta).setScale(4, RoundingMode.HALF_UP);
+					BigDecimal finalFrozen = currentFrozen.add(frozenDelta).setScale(4, RoundingMode.HALF_UP);
 					BigDecimal finalPurchased = currentPurchased.add(purchasedDelta);
 
 					// 저장
