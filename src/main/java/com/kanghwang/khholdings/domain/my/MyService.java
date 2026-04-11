@@ -39,23 +39,18 @@ public class MyService {
 		Long start = System.currentTimeMillis();
 		WalletDTO data =  myRepository.selectWalletById(walletId);
 
-		// Redis에 자산 정보가 없는 경우 DB에서 조회한 값으로 초기화
+		// DB 조회 시마다 Redis 자산 정보 덮어쓰기
 		if (data != null) {
 			String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
 			RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
 
-			if (walletMap.isEmpty()) {
-				Map<String, Object> initData = new HashMap<>();
-				initData.put("cash_balance", data.getCashBalance().toPlainString());
-				initData.put("frozen_amount", data.getFrozenAmount().toPlainString());
-				initData.put("total_purchased_value", data.getTotalPurchasedValue().toPlainString());
+			Map<String, Object> initData = new HashMap<>();
+			initData.put("cash_balance", data.getCashBalance().toPlainString());
+			initData.put("frozen_amount", data.getFrozenAmount().toPlainString());
+			initData.put("total_purchased_value", data.getTotalPurchasedValue().toPlainString());
 
-				walletMap.putAll(initData);                    // 한 번에 처리
-				walletMap.expire(1, TimeUnit.HOURS); // 데이터가 들어온 시점에 TTL 설정 (1시간)
-			}
-
-			// Redis에 데이터가 있다면 TTL 연장 (1시간)
-			walletMap.expire(1, TimeUnit.HOURS);
+			walletMap.putAll(initData); // 한 번에 처리
+			walletMap.expire(1, TimeUnit.HOURS); // TTL 연장 (1시간)
 		}
 
 		long end = System.currentTimeMillis();
