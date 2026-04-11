@@ -94,12 +94,17 @@ public class RedisKeyManager {
         return getPrefix() + "topic:wallet:*";
     }
 
-    // 16. 시장가 (HASH)
+    // 16. 사용자별 자산 분산락 (RLOCK): 자산 정보 업데이트 시 점유용
+    public String getWalletLockKey(Long walletId) {
+        return getPrefix() + "lock:wallet:" + walletId;
+    }
+
+    // 17. 시장가 (HASH)
     public String getMarketPriceKey() {
         return getPrefix() + "market:price";
     }
 
-    // 17. 시장가 (TOPIC): 시장가 실시간 전파용
+    // 18. 시장가 (TOPIC): 시장가 실시간 전파용
     public String getMarketPriceTopicKey() {
         return getPrefix() + "topic:market:price";
     }

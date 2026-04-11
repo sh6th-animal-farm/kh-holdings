@@ -36,12 +36,12 @@ public class MyService {
 		// Redis에 자산 정보가 없는 경우 DB에서 조회한 값으로 초기화
 		if (data != null) {
 			String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
-			RMap<String, BigDecimal> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
+			RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
 
 			if (walletMap.isEmpty()) {
-				walletMap.put("cash_balance", data.getCashBalance());
-				walletMap.put("frozen_amount", data.getFrozenAmount());
-				walletMap.put("total_purchased_value", data.getTotalPurchasedValue());
+				walletMap.put("cash_balance", data.getCashBalance().toPlainString());
+				walletMap.put("frozen_amount", data.getFrozenAmount().toPlainString());
+				walletMap.put("total_purchased_value", data.getTotalPurchasedValue().toPlainString());
 
 				// 데이터가 들어온 시점에 TTL 설정 (1시간)
 				walletMap.expire(1, TimeUnit.HOURS);

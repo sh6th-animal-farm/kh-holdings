@@ -1,7 +1,9 @@
 package com.kanghwang.khholdings.domain.order.service;
 
 import java.math.BigDecimal;
+import java.util.concurrent.TimeUnit;
 
+import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -100,13 +102,10 @@ public class OrderService {
 		insertOutbox(orderDTO, "ORDER"); // PENDING
 
 		// 5. Redis 지갑 정보에 동결 금액 추가
-		String walletKey = redisKeyManager.getPersonalWalletInfoKey(orderDTO.getWalletId());
-		RMap<String, BigDecimal> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
-
 		if (orderDTO.getOrderSide() == OrderSide.BUY) {
 			// 매수: (주문가 * 수량) 만큼 현금 동결
 			BigDecimal freezeAmount = orderDTO.getOrderPrice().multiply(orderDTO.getOrderVolume());
-			walletMap.addAndGet("frozen_amount", freezeAmount);
+			freezeCash(orderDTO.getWalletId(), freezeAmount);
 		}
 
 		// 6. DB에서 주문 생성 후, Redis 매칭 엔진에 추가
@@ -229,5 +228,40 @@ public class OrderService {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void updateOutboxStatus(Long orderId, String type, String status, int retryCount) {
 		outboxRepository.updateOutboxStatus(orderId, type, status, retryCount);
+	}
+
+	// 매수 시 자산 동결 (분산 락)
+	public BigDecimal freezeCash(Long walletId, BigDecimal amount) {
+		String lockKey = redisKeyManager.getWalletLockKey(walletId);
+		RLock lock = redissonClient.getLock(lockKey);
+
+		try {
+			// 5초 대기 / 처리 지연 시 점유 시간 연장 (미처리 또는 오처리 방지)
+			if (lock.tryLock(5, -1, TimeUnit.SECONDS)) {
+				try {
+					String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
+					RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
+
+					// 현재 동결 금액 가져오기 (타입 변환)
+					Object rawFrozen = walletMap.get("frozen_amount");
+					BigDecimal currentFrozen = (rawFrozen != null)
+						? new BigDecimal(String.valueOf(rawFrozen))
+						: BigDecimal.ZERO;
+
+					// 동결 금액 가산
+					BigDecimal updatedFrozen = currentFrozen.add(amount);
+					walletMap.put("frozen_amount", updatedFrozen.toPlainString());
+
+					log.info("[현금 동결] Wallet: {}, Amount: {}, Total: {}", walletId, amount, updatedFrozen);
+					return updatedFrozen;
+				} finally {
+					if (lock.isHeldByCurrentThread()) lock.unlock();
+				}
+			}
+			throw new RuntimeException("[현금 동결 실패] 시스템 지연");
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new RuntimeException("[현금 동결 중 인터럽트 발생]", e);
+		}
 	}
 }
