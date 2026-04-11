@@ -47,8 +47,7 @@ public class TradingSimulationBot {
 
 		try {
 //			OrderRequestDTO randomOrder = createRandomOrder();
-// 			createAggressiveOrder();
-			increasePriceStepByStep();
+			createAggressiveOrder();
 
 //			log.info(">>>> [BOT] 주문 생성 | 타입: {} | 사이드: {} | 가격: {} | 수량: {} | 총 주문액: {}",
 //				randomOrder.getOrderType(),
@@ -61,51 +60,6 @@ public class TradingSimulationBot {
 
 		} catch (Exception e) {
 			log.error(">>>> [BOT] 주문 처리 중 오류: ", e);
-		}
-	}
-
-	// 테스트: 45번 토큰 가격 100원씩 증가
-	private BigDecimal currentBotPrice = new BigDecimal("5000");
-	private final Long TARGET_TOKEN_ID = 45L;
-	private void increasePriceStepByStep() {
-		try {
-			// 1. 가격 상승 (5000원부터 시작해서 매 호출마다 100원씩 상승)
-			currentBotPrice = currentBotPrice.add(new BigDecimal("100"));
-
-			BigDecimal volume = new BigDecimal("10.0"); // 체결 수량 10개 고정
-			Long sellerId = 14L; // 메이커 (매도벽)
-			Long buyerId = 3L;  // 테이커 (매수)
-
-			// [STEP 1] 6번 지갑이 '지정가 매도' (벽 세우기)
-			OrderRequestDTO sellOrder = OrderRequestDTO.builder()
-				.walletId(sellerId)
-				.tokenId(TARGET_TOKEN_ID)
-				.orderSide(OrderSide.SELL)
-				.orderType(OrderType.LIMIT)
-				.orderPrice(currentBotPrice)
-				.orderVolume(volume)
-				.totalPrice(BigDecimal.ZERO)
-				.build();
-
-			orderService.placeOrder(sellOrder);
-
-			// [STEP 2] 7번 지갑이 '시장가 매수' (즉시 체결)
-			// 시장가 매수는 totalPrice에 지불할 최대 금액을 담음
-			OrderRequestDTO buyOrder = OrderRequestDTO.builder()
-				.walletId(buyerId)
-				.tokenId(TARGET_TOKEN_ID)
-				.orderSide(OrderSide.BUY)
-				.orderType(OrderType.MARKET)
-				.orderPrice(BigDecimal.ZERO)
-				.orderVolume(BigDecimal.ZERO)
-				.totalPrice(currentBotPrice.multiply(volume))
-				.build();
-
-			orderService.placeOrder(buyOrder);
-
-		} catch (Exception e) {
-			log.error(">>>> [BOT] 45번 토큰 가격 상승 루프 오류: {}", e.getMessage());
-			// 에러 발생 시 너무 낮게 떨어지지 않도록 현재가 유지 혹은 로그 확인
 		}
 	}
 

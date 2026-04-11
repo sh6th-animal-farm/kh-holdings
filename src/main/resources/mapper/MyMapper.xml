@@ -214,6 +214,9 @@
            5000000,
            'kh 증권'
        )
+        ON CONFLICT (wallet_id)
+        DO UPDATE SET
+            user_id = EXCLUDED.user_id
     </insert>
 
     <select id="selectAccount" parameterType="long" resultType="long">
