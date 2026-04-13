@@ -266,8 +266,8 @@ public class OrderRedisService {
 			marketDataService.processMarketUpdate(transactionDTO);
 
 			// (4) 시장가 업데이트
-			redissonClient.getMap(redisKeyManager.getMarketPriceKey())
-				.put(String.valueOf(tokenId), targetPrice);
+			redissonClient.getMap(redisKeyManager.getMarketPriceKey(), StringCodec.INSTANCE)
+				.put(String.valueOf(tokenId), targetPrice.toPlainString());
 
 			// (5) 시장가 실시간 전파
 			LiveMarketPriceDTO liveMarketPrice = new LiveMarketPriceDTO(tokenId, targetPrice);
