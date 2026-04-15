@@ -18,6 +18,7 @@ public class HoldingDTO {
 	private String tokenName;				// 토큰명
 	private String tickerSymbol;			// 종목 코드
 	private BigDecimal tokenBalance;		// 보유 수량
+	private BigDecimal reservedBalance; 	// 동결 수량
 	private BigDecimal purchasedValue;		// 매입 금액
 
 	private BigDecimal marketValue;			// 평가 금액
