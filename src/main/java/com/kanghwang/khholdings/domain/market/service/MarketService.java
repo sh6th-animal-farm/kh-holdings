@@ -27,6 +27,7 @@ import com.kanghwang.khholdings.domain.market.dto.OrderPriceDTO;
 import com.kanghwang.khholdings.domain.market.dto.PendingDTO;
 import com.kanghwang.khholdings.domain.market.dto.TokenListDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
+import com.kanghwang.khholdings.domain.order.dto.TokenShortDTO;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
 import com.kanghwang.khholdings.global.util.RedisKeyManager;
 
@@ -97,18 +98,18 @@ public class MarketService {
     public List<CandleDTO> selectCandles(Long tokenId, int unit, long start, long end) {
 
         long start3 = System.currentTimeMillis();
-        log.info("차트 조회 [1] - 시작");
+        // log.info("차트 조회 [1] - 시작");
 
         String cacheKey = String.format("candle:%s:%d", unit + "m", tokenId); // Redis 캐시 키
         long currentMinute = OffsetDateTime.now().truncatedTo(ChronoUnit.MINUTES).toEpochSecond();
         String liveCandleKey = redisKeyManager.getCandleKey(tokenId, unit, currentMinute); // Redis 실시간 키
 
         long redisStart = System.currentTimeMillis();
-        log.info("차트 조회 - redis 조회");
+        // log.info("차트 조회 - redis 조회");
         // 1. Redis 캐시 조회
         RScoredSortedSet<CandleDTO> zset = redissonClient.getScoredSortedSet(cacheKey);
         List<CandleDTO> resultList = new ArrayList<>(zset.valueRange(start, true, end, true));
-        log.info("차트 조회 redis 조회 - 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start3));
+        // log.info("차트 조회 redis 조회 - 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start3));
 
         // 2. 캐시된 데이터에 없는 범위
         boolean isMissing = false;
@@ -150,7 +151,7 @@ public class MarketService {
             }
         }
 
-        log.info("차트 조회 [1] 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start3));
+        // log.info("차트 조회 [1] 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start3));
         return resultList;
     }
 
@@ -159,7 +160,7 @@ public class MarketService {
             RScoredSortedSet<CandleDTO> zset) {
 
         long start2 = System.currentTimeMillis();
-        log.info("차트 조회 [2]");
+        // log.info("차트 조회 [2]");
 
         RLock lock = redissonClient.getLock("lock:candles:" + tokenId);
         try {
@@ -201,7 +202,7 @@ public class MarketService {
             }
         }
 
-        log.info("차트 조회 [2] 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start2));
+        // log.info("차트 조회 [2] 로직 완료까지 걸린 시간: {}ms", (System.currentTimeMillis() - start2));
 
         return new ArrayList<>();
     }
@@ -322,5 +323,10 @@ public class MarketService {
         }
 
         return token;
+    }
+
+    // 토큰 정보 조회
+    public TokenShortDTO selectTokenShortInfo(Long tokenId) {
+        return marketRepository.selectTokenShortInfo(tokenId);
     }
 }

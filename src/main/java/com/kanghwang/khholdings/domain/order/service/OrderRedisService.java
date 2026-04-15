@@ -10,15 +10,23 @@ import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.stream.StreamAddArgs;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kanghwang.khholdings.domain.market.dto.OrderbookDTO;
 import com.kanghwang.khholdings.domain.market.dto.TradeDTO;
 import com.kanghwang.khholdings.domain.market.service.MarketDataService;
+import com.kanghwang.khholdings.domain.market.service.MarketService;
+import com.kanghwang.khholdings.domain.my.dto.WalletUpdateDTO;
 import com.kanghwang.khholdings.domain.order.dto.CancelRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.HoldingShortDTO;
+import com.kanghwang.khholdings.domain.order.dto.LiveMarketPriceDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderInfoDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.dto.RefundRequestDTO;
+import com.kanghwang.khholdings.domain.order.dto.TokenShortDTO;
 import com.kanghwang.khholdings.domain.order.dto.TransactionRequestDTO;
 import com.kanghwang.khholdings.domain.order.repository.OrderRepository;
 import com.kanghwang.khholdings.domain.order.type.OrderSide;
@@ -36,11 +44,13 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class OrderRedisService {
 
+	private final ObjectMapper objectMapper;
 	private final OrderRepository orderRepository;
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
 	private final RedissonClient redissonClient;
 	private final RedisKeyManager redisKeyManager;
 	private final MarketDataService marketDataService;
+	private final MarketService marketService;
 	private static final BigDecimal F_RATE = new BigDecimal("0.0006"); // 수수료 관리
 
 	public void processOrder(OrderRequestDTO myOrderDTO) {
@@ -255,6 +265,20 @@ public class OrderRedisService {
 			// (3) 토큰 실시간 리스트 제작, 캔들 생성
 			marketDataService.processMarketUpdate(transactionDTO);
 
+			// (4) 시장가 업데이트
+			redissonClient.getMap(redisKeyManager.getMarketPriceKey(), StringCodec.INSTANCE)
+				.put(String.valueOf(tokenId), targetPrice.toPlainString());
+
+			// (5) 시장가 실시간 전파
+			LiveMarketPriceDTO liveMarketPrice = new LiveMarketPriceDTO(tokenId, targetPrice);
+			redissonClient.getTopic(redisKeyManager.getMarketPriceTopicKey()).publish(liveMarketPrice);
+
+			// (6) 매수자/매도자 각각의 자산 및 보유 토큰 정보 업데이트
+			// 매수자: 체결된 만큼 동결 해제, 예수금 변동 없음, 매입금액 증가
+			updateWalletInfo(buyWalletId, tokenId, targetPrice, executedVolume, executedAmount, OrderSide.BUY);
+			// 매도자: 동결 해제 없음, 예수금 증가(수수료 제외), 매입금액 감소
+			updateWalletInfo(sellWalletId, tokenId, targetPrice, executedVolume, BigDecimal.ZERO, OrderSide.SELL);
+
 			log.info("[체결] Price {}, Volume {}, Amount {}", targetPrice.toPlainString(), executedVolume.toPlainString(), executedAmount.toPlainString());
 			log.info("[정산 예약] TradeID {}", tradeId);
 
@@ -314,6 +338,10 @@ public class OrderRedisService {
 			isCompleted = myOrderDTO.getRemainingToken().compareTo(BigDecimal.ZERO) <= 0;
 		}
 
+		// Redis 동결 금액 해제 및 웹소켓 전송용 공통 변수
+		boolean needWalletUpdate = false;
+		BigDecimal finalFrozen = BigDecimal.ZERO;
+
 		// 완료된 주문이거나, 시장가 주문(잔량 즉시 환불 대상)이면 Redis 호가창에서 먼저 지움
 		// if (isCompleted || myOrderDTO.getOrderType() == OrderType.MARKET) {
 		// 	removeOrder(myOrderDTO.getTokenId(), mySide, myOrderDTO.getOrderId());
@@ -323,6 +351,17 @@ public class OrderRedisService {
 			// 지정가 매수인데 주문 요청 금액보다 싸게 사서 돈이 남은 경우 추가 환불
 			if (myOrderDTO.getOrderType() == OrderType.LIMIT && myOrderDTO.getOrderSide() == OrderSide.BUY
 				&& myOrderDTO.getRemainingCash().compareTo(BigDecimal.ZERO) > 0) {
+				// Redis 동결 금액 즉시 해제 (예수금과 총 매입금액은 변동 X)
+				WalletUpdateDTO result = safeUpdateWallet(
+					myOrderDTO.getWalletId(),
+					myOrderDTO.getTokenId(),
+					BigDecimal.ZERO,
+					myOrderDTO.getRemainingCash().negate(),
+					BigDecimal.ZERO
+				);
+				finalFrozen = result.getFrozenAmount();
+				needWalletUpdate = true;
+
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), BigDecimal.ZERO);
 				redissonClient.getStream(redisKeyManager.getTradeStreamKey())
@@ -338,6 +377,13 @@ public class OrderRedisService {
 			// 부분 체결 시,
 			if (myOrderDTO.getOrderType() == OrderType.MARKET) {
 				// 1) 시장가 주문은 미체결 수량 즉시 환불
+
+				// 시장가 매수 남은 현금 동결 해제
+				if (myOrderDTO.getOrderSide() == OrderSide.BUY) {
+					finalFrozen = releaseFrozenCash(myOrderDTO.getWalletId(), myOrderDTO.getRemainingCash());
+					needWalletUpdate = true;
+				}
+
 				// 비동기 정산 및 이력 저장용 Stream에 저장 후 DB 프로시저 호출
 				RefundRequestDTO refundRequestDTO = new RefundRequestDTO(snowflakeIdGenerator.nextId(), myOrderDTO.getOrderId(), myOrderDTO.getRemainingCash(), myOrderDTO.getRemainingToken());
 				redissonClient.getStream(redisKeyManager.getTradeStreamKey())
@@ -350,7 +396,45 @@ public class OrderRedisService {
 				// 2) 지정가 주문은 이미 [Step 5]에서 업데이트
 				log.info("[지정가 주문 - 잔량 대기] OrderId {}, RemainingToken {}", myOrderDTO.getOrderId(), myOrderDTO.getRemainingToken());
 			}
+
+			// 3. 지갑 상태 변화가 있다면 웹소켓 발행
+			if (needWalletUpdate) {
+				publishWalletOnlyUpdate(myOrderDTO.getWalletId(), myOrderDTO.getTokenId(), finalFrozen);
+			}
 		}
+	}
+
+	// 동결 금액 해제
+	private BigDecimal releaseFrozenCash(Long walletId, BigDecimal amount) {
+		WalletUpdateDTO result = safeUpdateWallet(
+			walletId,
+			null,
+			BigDecimal.ZERO,
+			amount.negate(),
+			BigDecimal.ZERO
+		);
+
+		return result.getFrozenAmount();
+	}
+
+	// 지갑 정보 웹소켓 발행
+	private void publishWalletOnlyUpdate(Long walletId, Long tokenId, BigDecimal frozenAmount) {
+		String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
+		RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
+		TokenShortDTO tokenInfo = marketService.selectTokenShortInfo(tokenId);
+
+		WalletUpdateDTO update = new WalletUpdateDTO(
+			walletId,
+			tokenId,
+			tokenInfo.getTokenName(),
+			tokenInfo.getTickerSymbol(),
+			getSafeBigDecimal(walletMap.get("cash_balance")),
+			frozenAmount,
+			getSafeBigDecimal(walletMap.get("total_purchased_value")),
+			BigDecimal.ZERO,
+			BigDecimal.ZERO
+		);
+		redissonClient.getTopic("topic:wallet:" + walletId).publish(update);
 	}
 
 	// 웹소켓 호가창 가격 및 수량 전송
@@ -452,11 +536,41 @@ public class OrderRedisService {
 				.add(StreamAddArgs.entry("data", refundRequestDTO));
 
 			log.info("[EXIT] Redis에 주문 정보가 없어 DB를 바탕으로 환불 스트림 발행했습니다. (ID: {})", orderId);
+
 			return;
 		}
 
-		// 2. Redis 작업 (미체결 수량 해제 및 호가창, 상세 정보에서 제거)
+		// 2. Redis 작업
+		// 2-1. 미체결 수량 해제
 		releaseOrderQty(orderInfo.getWalletId(), orderInfo.getTokenId(), orderInfo.getOrderVolume(), orderInfo.getOrderSide());
+
+		// 2-2. 현금 동결 해제 (매수 주문인 경우)
+		BigDecimal finalFrozenAmount = BigDecimal.ZERO;
+		BigDecimal finalCashBalance = BigDecimal.ZERO;
+		BigDecimal finalTotalPurchasedValue = BigDecimal.ZERO;
+
+		if (orderInfo.getOrderSide() == OrderSide.BUY) {
+			// 동결금액만 해제
+			WalletUpdateDTO walletResult = safeUpdateWallet(
+				orderInfo.getWalletId(),
+				tokenId,
+				BigDecimal.ZERO,
+				orderInfo.getRemainingCash().negate(),
+				BigDecimal.ZERO
+			);
+
+			// 업데이트된 최신 자산 정보
+			finalFrozenAmount = walletResult.getFrozenAmount();               // 동결금액
+			finalCashBalance = walletResult.getCashBalance();                 // 예수금
+			finalTotalPurchasedValue = walletResult.getTotalPurchasedValue(); // 매입금액
+
+			// 웹소켓 발행
+			walletResult.setTokenQty(orderInfo.getRemainingToken());
+
+			redissonClient.getTopic("topic:wallet:" + orderInfo.getWalletId()).publish(walletResult);
+		}
+
+		// 2-3. 호가창, 상세 정보에서 제거
 		removeOrder(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderId);
 		updateAggrOrderBook(orderInfo.getTokenId(), orderInfo.getOrderSide(), orderInfo.getOrderPrice(), orderInfo.getRemainingToken().negate());
 
@@ -472,5 +586,157 @@ public class OrderRedisService {
 			.add(StreamAddArgs.entry("data", refundRequestDTO));
 
 		log.info("[주문 취소 예약] OrderId {}", orderId);
+	}
+
+	// 전자 지갑 업데이트 (Redis)
+	private void updateWalletInfo(Long walletId, Long tokenId, BigDecimal price, BigDecimal volume, BigDecimal executedAmount, OrderSide side) {
+		// 1. 증분(Delta) 계산
+		BigDecimal cashDelta = BigDecimal.ZERO;
+		BigDecimal frozenDelta = BigDecimal.ZERO;
+		BigDecimal purchasedDelta = BigDecimal.ZERO;
+
+		if (side == OrderSide.BUY) {
+			// [매수자]
+			cashDelta = BigDecimal.ZERO;             // 예수금 : 변동 없음
+			frozenDelta = executedAmount.negate();   // 동결금액: 체결된 금액만큼 해제 (-)
+			purchasedDelta = executedAmount;         // 매입금액: 체결된 금액만큼 증가 (+)
+		} else {
+			// [매도자]
+			BigDecimal sellFee = executedAmount.multiply(F_RATE);
+			cashDelta = executedAmount.subtract(sellFee);   // 예수금: 체결 금액에서 수수료 제외하고 증가 (+)
+			frozenDelta = BigDecimal.ZERO;                  // 동결금액: 매도는 현금 동결 없음
+			purchasedDelta = executedAmount.negate();       // 매입금액: 체결된 금액만큼 감소 (-)
+		}
+
+		// 2. 자산 정보 업데이트
+		WalletUpdateDTO walletResult = safeUpdateWallet(walletId, tokenId, cashDelta, frozenDelta, purchasedDelta);
+
+		// 3. 보유 토큰 업데이트
+		TokenShortDTO tokenInfo = marketService.selectTokenShortInfo(tokenId);
+		String holdingKey = redisKeyManager.getPersonalHoldingsInfoKey(walletId);
+
+		BigDecimal actualVolume = volume;
+		if (side == OrderSide.BUY) {
+			BigDecimal buyFeeToken = volume.multiply(F_RATE);
+			actualVolume = volume.subtract(buyFeeToken);  // 매수자는 수수료를 제외
+		}
+		HoldingShortDTO holdingInfo = updateHoldingDetail(holdingKey, tokenId, price, actualVolume, side, tokenInfo);
+
+		// 4. 실시간 토픽 발행 (Pub/Sub)
+		walletResult.setTokenQty(holdingInfo.getQuantity());
+		walletResult.setTotalPurchasedValue(holdingInfo.getPurchasedValue());
+
+		redissonClient.getTopic("topic:wallet:" + walletId).publish(walletResult);
+	}
+
+	// 자산 정보 업데이트 (분산 락)
+	private WalletUpdateDTO safeUpdateWallet(Long walletId, Long tokenId, BigDecimal cashDelta, BigDecimal frozenDelta, BigDecimal purchasedDelta) {
+		String lockKey = redisKeyManager.getWalletLockKey(walletId);
+		RLock lock = redissonClient.getLock(lockKey);
+		String walletKey = redisKeyManager.getPersonalWalletInfoKey(walletId);
+
+		try {
+			// 5초 대기, Watchdog 활성화(-1)
+			if (lock.tryLock(5, -1, TimeUnit.SECONDS)) {
+				try {
+					// StringCodec을 사용하여 문자열로 읽고 Object로 받아 타입 유연성 확보
+					RMap<String, Object> walletMap = redissonClient.getMap(walletKey, StringCodec.INSTANCE);
+
+					// 값 추출하여 BigDecimal로 변환
+					BigDecimal currentCash = getSafeBigDecimal(walletMap.get("cash_balance"));
+					BigDecimal currentFrozen = getSafeBigDecimal(walletMap.get("frozen_amount"));
+					BigDecimal currentPurchased = getSafeBigDecimal(walletMap.get("total_purchased_value"));
+
+					// 연산
+					BigDecimal finalCash = currentCash.add(cashDelta).setScale(4, RoundingMode.HALF_UP);
+					BigDecimal finalFrozen = currentFrozen.add(frozenDelta).setScale(4, RoundingMode.HALF_UP);
+					BigDecimal finalPurchased = currentPurchased.add(purchasedDelta);
+
+					// 저장
+					walletMap.put("cash_balance", finalCash.toPlainString());
+					walletMap.put("frozen_amount", finalFrozen.toPlainString());
+					walletMap.put("total_purchased_value", finalPurchased.toPlainString());
+
+					String tokenName = "";
+					String ticker = "";
+					if (tokenId != null) {
+						TokenShortDTO tokenInfo = marketService.selectTokenShortInfo(tokenId);
+						tokenName = tokenInfo.getTokenName();
+						ticker = tokenInfo.getTickerSymbol();
+					}
+
+					return new WalletUpdateDTO(
+						walletId,
+						tokenId,
+						tokenName,
+						ticker,
+						finalFrozen,
+						finalCash,
+						finalPurchased,
+						BigDecimal.ZERO,
+						BigDecimal.ZERO
+					);
+				} finally {
+					if (lock.isHeldByCurrentThread()) lock.unlock();
+				}
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+		throw new RuntimeException("지갑 업데이트 락 획득 실패: " + walletId);
+	}
+
+	// 타입을 BigDecimal로 변환
+	private BigDecimal getSafeBigDecimal(Object value) {
+		if (value == null) return BigDecimal.ZERO;
+		return new BigDecimal(String.valueOf(value));
+	}
+
+	// 사용자별 보유 토큰 업데이트
+	private HoldingShortDTO updateHoldingDetail(String holdingKey, Long tokenId, BigDecimal price, BigDecimal volume, OrderSide side, TokenShortDTO tokenInfo) {
+		RMap<String, String> holdingMap = redissonClient.getMap(holdingKey, StringCodec.INSTANCE);
+		String holdingInfoJson = holdingMap.get(String.valueOf(tokenId));
+		HoldingShortDTO holdingInfo = null; // 기존 보유 토큰 정보
+
+		try {
+			holdingInfo = (holdingInfoJson == null) ?
+				new HoldingShortDTO(tokenInfo.getTokenName(), tokenInfo.getTickerSymbol(), BigDecimal.ZERO, BigDecimal.ZERO) :
+				objectMapper.readValue(holdingInfoJson, HoldingShortDTO.class);
+		} catch (JsonProcessingException e) {
+			throw new RuntimeException("HoldingInfo 파싱 실패", e);
+		}
+
+		BigDecimal newQty;
+		BigDecimal newPurchasedVal;
+		BigDecimal tradeAmount = price.multiply(volume);
+
+		if (side == OrderSide.BUY) {
+			newQty = holdingInfo.getQuantity().add(volume);
+			newPurchasedVal = holdingInfo.getPurchasedValue().add(tradeAmount);
+		} else {
+			// 매도 시: 기존 평단가 비율만큼 매입금액 차감
+			BigDecimal avgPrice = holdingInfo.getQuantity().compareTo(BigDecimal.ZERO) > 0 ?
+				holdingInfo.getPurchasedValue().divide(holdingInfo.getQuantity(), 8, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+			newQty = holdingInfo.getQuantity().subtract(volume);
+			newPurchasedVal = holdingInfo.getPurchasedValue().subtract(avgPrice.multiply(volume));
+		}
+
+		// 업데이트된 보유 토큰 정보
+		HoldingShortDTO newHoldingInfo = new HoldingShortDTO(tokenInfo.getTokenName(), tokenInfo.getTickerSymbol(), newQty, newPurchasedVal);
+
+		if (newQty.compareTo(BigDecimal.ZERO) <= 0) {
+			holdingMap.remove(String.valueOf(tokenId));
+		} else {
+			String newHoldingInfoJson = null;
+			try {
+				newHoldingInfoJson = objectMapper.writeValueAsString(newHoldingInfo);
+			} catch (JsonProcessingException e) {
+				log.error("JSON 생성 에러: {}", e.getMessage());
+				throw new RuntimeException("JSON 변환 실패", e);
+			}
+			holdingMap.put(String.valueOf(tokenId), newHoldingInfoJson);
+		}
+		return newHoldingInfo;
 	}
 }

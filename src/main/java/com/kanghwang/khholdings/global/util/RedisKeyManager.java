@@ -76,4 +76,36 @@ public class RedisKeyManager {
     public String getPersonalOrderBookKey(Long walletId, OrderSide side) {
         return getPrefix() + "orderbook:" + walletId + ":" + side.name().toLowerCase();
     }
+
+    // 13. 사용자별 보유 토큰 정보 (HASH)
+    public String getPersonalHoldingsInfoKey(Long walletId) {
+        return getPrefix() + "holdings:" + walletId;
+    }
+
+
+    // 14. 사용자별 자산 정보 (HASH)
+    public String getPersonalWalletInfoKey(Long walletId) {
+        return getPrefix() + "wallet:" + walletId;
+    }
+
+    // 15. 사용자별 자산 정보 (TOPIC): 자산 정보 실시간 전파용
+    public String getWalletInfoTopicKey() {
+        // return getPrefix() + "topic:wallet:" + walletId;
+        return getPrefix() + "topic:wallet:*";
+    }
+
+    // 16. 사용자별 자산 분산락 (RLOCK): 자산 정보 업데이트 시 점유용
+    public String getWalletLockKey(Long walletId) {
+        return getPrefix() + "lock:wallet:" + walletId;
+    }
+
+    // 17. 시장가 (HASH)
+    public String getMarketPriceKey() {
+        return getPrefix() + "market:price";
+    }
+
+    // 18. 시장가 (TOPIC): 시장가 실시간 전파용
+    public String getMarketPriceTopicKey() {
+        return getPrefix() + "topic:market:price";
+    }
 }
