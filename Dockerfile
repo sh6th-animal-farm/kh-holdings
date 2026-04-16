@@ -12,7 +12,7 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
 # 빌드 결과물 복사 (build/libs 폴더의 jar 파일)
-COPY --from=build /app/build/libs/*-SNAPSHOT.war ./app.jar
+COPY --from=build /app/build/libs/*-SNAPSHOT.jar ./app.jar
 
 RUN chmod +x ./app.jar
 # 실행 권한 부여 및 포트 설정
