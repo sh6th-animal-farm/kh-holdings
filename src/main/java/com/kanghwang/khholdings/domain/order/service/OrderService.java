@@ -203,10 +203,10 @@ public class OrderService {
 
 	// outbox 입력
 	private void insertOutbox(Object dto, String type) {
-		try {
-			Long orderId = 0L;
-			String json = "";
+		Long orderId = 0L;
+		String json = "";
 
+		try {
 			if ("ORDER".equals(type)) {
 				OrderRequestDTO orderDto = (OrderRequestDTO) dto;
 				orderId = orderDto.getOrderId();
@@ -220,7 +220,8 @@ public class OrderService {
 			outboxRepository.insertOutbox(orderId, type, json, "PENDING");
 			log.info("Outbox 저장 성공 (ID: {}, type: {})", orderId, type);
 		} catch (Exception e) {
-			throw new RuntimeException("Outbox 저장 실패", e);
+			String failMsg = "Outbox 저장 실패 (ID: " + orderId + ", type: " + type + ")";
+			throw new RuntimeException(failMsg, e);
 		}
 	}
 
