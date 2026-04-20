@@ -194,7 +194,7 @@
            #{userId},
            #{userId},
            'KH_' || LPAD(#{userId}::text, 6, '0'),
-           5000000,
+           100000000,
            'kh 증권'
        )
         ON CONFLICT (wallet_id)
