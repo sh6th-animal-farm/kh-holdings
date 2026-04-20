@@ -141,6 +141,7 @@
             JOIN users u ON w.user_id = u.user_id
         WHERE h.token_balance > 0
             AND h.token_id = #{tokenId}
+            AND user_class IN ('USER'::user_class_enum, 'ENTERPRISE'::user_class_enum)
     </select>
 
     <insert id="insertSnapshot">
