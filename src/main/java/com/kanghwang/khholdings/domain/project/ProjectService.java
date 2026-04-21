@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +22,7 @@ import com.kanghwang.khholdings.domain.project.dto.SnapshotDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionRequestDTO;
 import com.kanghwang.khholdings.domain.project.dto.SubscriptionResultDTO;
+import com.kanghwang.khholdings.global.util.RedisKeyManager;
 import com.kanghwang.khholdings.global.util.SnowflakeIdGenerator;
 
 import lombok.RequiredArgsConstructor;
@@ -31,6 +34,8 @@ public class ProjectService {
 	private final ProjectRepository projectRepository;
 	private final MarketRepository marketRepository;
 	private final SnowflakeIdGenerator snowflakeIdGenerator;
+	private final RedissonClient redissonClient;
+	private final RedisKeyManager redisKeyManager;
 
 	// 청약 신청
 	@Transactional
@@ -274,6 +279,11 @@ public class ProjectService {
 		// 토큰 삭제
 		projectRepository.deleteToken(tokenId);
 
+		// 토큰 소각 시, Redis 시장가 정보 삭제
+		String marketPriceKey = redisKeyManager.getMarketPriceKey();
+		redissonClient.getMap(marketPriceKey, StringCodec.INSTANCE)
+			.remove(String.valueOf(tokenId));
+
 		return resultList;
 	}
 
@@ -283,5 +293,10 @@ public class ProjectService {
 		if (result <= 0) {
 			throw new IllegalArgumentException("토큰 발행에 실패했습니다.");
 		}
+
+		// 토큰 발행 시, Redis 시장가 정보 삽입
+		String marketPriceKey = redisKeyManager.getMarketPriceKey();
+		redissonClient.getMap(marketPriceKey, StringCodec.INSTANCE)
+			.put(String.valueOf(openDTO.getTokenId()), openDTO.getIssuePrice().toPlainString());
 	}
 }
