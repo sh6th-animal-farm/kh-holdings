@@ -228,7 +228,7 @@
                     THEN EXTRACT(EPOCH FROM (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' - INTERVAL '15 hours'))::BIGINT
                     ELSE EXTRACT(EPOCH FROM (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' + INTERVAL '9 hours'))::BIGINT
             END as start_time
-        )
+        ),
         -- 1. 가격 정보 (현재가, 시가) 계산
         Prices AS (
             SELECT

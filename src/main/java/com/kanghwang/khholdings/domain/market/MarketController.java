@@ -3,6 +3,7 @@ package com.kanghwang.khholdings.domain.market;
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -120,7 +121,7 @@ public class MarketController {
 		// MarketService에서 Redis + DB 로직을 행
 		TokenListDTO detail = marketService.selectTokenOhlcv(tokenId);
 		if (detail == null) {
-			return ApiResponseUtil.ok("조회된 결과가 없습니다.", null);
+			return ApiResponseUtil.error(HttpStatus.NOT_FOUND, "토큰 상세 정보 조회에 실패했습니다.");
 		}
 
 		return ApiResponseUtil.ok("토큰 상세 정보 조회에 성공했습니다.", detail);
