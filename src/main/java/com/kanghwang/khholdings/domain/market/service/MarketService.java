@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -19,6 +20,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.stereotype.Service;
 
 import com.kanghwang.khholdings.domain.market.MarketRepository;
@@ -47,42 +49,49 @@ public class MarketService {
     public List<TokenListDTO> selectAll() {
 
         RMap<Long, TokenListDTO> marketInfoMap = redissonClient.getMap(redisKeyManager.getMarketInfoKey());
-        RScoredSortedSet<Long> rankingSet = redissonClient.getScoredSortedSet(redisKeyManager.getMarketRankKey());
+        RMap<String, String> priceMap = redissonClient.getMap(redisKeyManager.getMarketPriceKey(), StringCodec.INSTANCE);
 
-        // 1. 랭킹셋에서 거래량 높은 순(desc)으로 토큰 ID들만 먼저 가져옴
-        List<Long> sortedIds = new ArrayList<>(rankingSet.valueRangeReversed(0, -1));
+        // 1. priceMap에서 모든 키(Token ID)를 가져옵니다.
+        Set<String> priceKeySet = priceMap.readAllKeySet();
         List<TokenListDTO> list;
 
-        if (!sortedIds.isEmpty()) {
-            // 2. Redis에 데이터가 있는 경우: ID 순서대로 Map에서 꺼내기 (이미 정렬된 상태 유지)
-            Map<Long, TokenListDTO> dataMap = marketInfoMap.getAll(new HashSet<>(sortedIds));
-            list = sortedIds.stream()
-                    .map(dataMap::get)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
+        if (priceKeySet != null && !priceKeySet.isEmpty()) {
+            // String으로 저장된 키를 Long으로 변환
+            Set<Long> tokenIds = priceKeySet.stream()
+                .map(Long::valueOf)
+                .collect(Collectors.toSet());
+
+            // 2. Redis Map에서 ID들에 해당하는 데이터를 한꺼번에 가져옵니다.
+            Map<Long, TokenListDTO> dataMap = marketInfoMap.getAll(tokenIds);
+
+            list = dataMap.values().stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
         } else {
-            // 3. Redis가 비어있는 경우: DB 조회
+            // 3. Redis가 비어있는 경우 DB 조회
             list = marketRepository.selectAll();
             if (list != null && !list.isEmpty()) {
+                Map<Long, TokenListDTO> bulkMap = new HashMap<>();
+                Map<String, String> bulkPriceMap = new HashMap<>();
+
                 list.forEach(dto -> {
+                    // 데이터 정제
                     if (dto.getDailyTradeVolume() != null) {
                         dto.setDailyTradeVolume(dto.getDailyTradeVolume().setScale(0, RoundingMode.DOWN));
                     }
                     if (dto.getChangeRate() != null) {
                         dto.setChangeRate(dto.getChangeRate().setScale(2, RoundingMode.HALF_UP));
                     }
-                    rankingSet.add(dto.getDailyTradeVolume().doubleValue(), dto.getTokenId());
+
+                    bulkMap.put(dto.getTokenId(), dto);
+                    bulkPriceMap.put(String.valueOf(dto.getTokenId()),
+                        dto.getMarketPrice() != null ? dto.getMarketPrice().toString() : "0");
                 });
 
-                Map<Long, TokenListDTO> bulkMap = list.stream()
-                        .collect(Collectors.toMap(TokenListDTO::getTokenId, dto -> dto));
+                // Redis에 벌크 업로드
                 marketInfoMap.putAll(bulkMap);
-
-                list.sort((a, b) -> {
-                    BigDecimal volA = a.getDailyTradeVolume() != null ? a.getDailyTradeVolume() : BigDecimal.ZERO;
-                    BigDecimal volB = b.getDailyTradeVolume() != null ? b.getDailyTradeVolume() : BigDecimal.ZERO;
-                    return volB.compareTo(volA);
-                });
+                priceMap.putAll(bulkPriceMap);
             }
         }
 
