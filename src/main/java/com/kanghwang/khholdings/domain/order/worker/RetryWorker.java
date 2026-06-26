@@ -11,6 +11,7 @@ import com.kanghwang.khholdings.domain.order.dto.OrderOutboxDTO;
 import com.kanghwang.khholdings.domain.order.dto.OrderRequestDTO;
 import com.kanghwang.khholdings.domain.order.repository.OutboxRepository;
 import com.kanghwang.khholdings.domain.order.service.OrderService;
+import com.kanghwang.khholdings.global.util.SlackAlarmUtil;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ public class RetryWorker {
 	private final OutboxRepository outboxRepository;
 	private final OrderService orderService;
 	private final ObjectMapper objectMapper;
+	private final SlackAlarmUtil slackAlarmUtil;
 
 	@Scheduled(fixedDelay = 10000) // 10초
 	public void retryFailedOrders() {
@@ -57,7 +59,24 @@ public class RetryWorker {
 				orderService.updateOutboxStatus(orderId, type, nextStatus, nextRetry);
 				log.error("[{} - 재시도 실패] ID: {}, count: {}", typeKR, orderId, curRetry);
 				log.error("error: {}", e.getMessage());
+
+				// 최종 실패 시, 슬랙 알람 전송
+				if ("FAILED".equals(nextStatus)) {
+					sendSlackAlarm(typeKR, orderId, nextRetry, e.getMessage());
+				}
 			}
 		}
+	}
+
+	private void sendSlackAlarm(String typeKR, Long orderId, int retryCount, String errorMessage) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("🚨 [KH Holdings] 재시도 최종 실패 알림 🚨\n");
+		sb.append("------------------------------------\n");
+		sb.append(String.format("• 타입 : %s\n", typeKR));
+		sb.append(String.format("• ID  : %d\n", orderId));
+		sb.append("------------------------------------\n");
+		sb.append("⚠️ 즉시 DB 확인 및 수동 조치가 필요합니다. ⚠️");
+
+		slackAlarmUtil.sendAlarm(sb.toString());
 	}
 }
